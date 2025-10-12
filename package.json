@@ -4,7 +4,9 @@
   "description": "discord bot for hottest videogame sales and deals",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
   },
   "repository": {
     "type": "git",
@@ -18,9 +20,17 @@
     "videogames"
   ],
   "author": "Victor Doyle",
-  "license": "ISC",
   "bugs": {
     "url": "https://github.com/VictorDoyle/GameDeals-discordbot/issues"
   },
-  "homepage": "https://github.com/VictorDoyle/GameDeals-discordbot#readme"
+  "homepage": "https://github.com/VictorDoyle/GameDeals-discordbot#readme",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
 }
