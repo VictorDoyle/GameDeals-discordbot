@@ -34,7 +34,7 @@ export class CheapSharkAPI {
 
       let deals: CheapSharkDeal[] = await response.json() as CheapSharkDeal[];
 
-      console.log(`Fetched ${deals.length} deals from CheapShark`);
+      console.log(`Fetched ${deals.length} deals from api`);
 
       if (config.minReviewCount && config.minReviewCount > 0) {
         deals = deals.filter(deal => {
@@ -50,7 +50,7 @@ export class CheapSharkAPI {
 
       return deals;
     } catch (error) {
-      console.error('Error fetching deals from CheapShark:', error);
+      console.error('Error fetching deals from api:', error);
       throw error;
     }
   }
@@ -64,7 +64,7 @@ export class CheapSharkAPI {
       const deals = await this.getDeals(storeConfig, dealsPerStore);
       allDeals.push(...deals);
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     console.log(`Total deals from all stores: ${allDeals.length}`);
@@ -93,7 +93,6 @@ export class CheapSharkAPI {
     }
 
     message += `Link: https://www.cheapshark.com/redirect?dealID=${deal.dealID}\n\n`;
-    message += `_Powered by CheapShark_`;
 
     return message;
   }
