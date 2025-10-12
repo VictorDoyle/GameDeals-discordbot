@@ -3,3 +3,5 @@ dist
 .env
 .DS_Store
 .vscode
+rate-limit-state.json
+*.log
