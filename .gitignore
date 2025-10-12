@@ -5,3 +5,4 @@ dist
 .vscode
 rate-limit-state.json
 *.log
+TODO.md
