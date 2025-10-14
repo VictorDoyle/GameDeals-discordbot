@@ -39,6 +39,7 @@ const deduplicationService = new DeduplicationService('./deal-history.json', DED
 
 async function postDeals() {
   try {
+    console.log('Fetching deals from CheapShark API...');
     console.log(`Deal limit: ${DEAL_LIMIT}`);
     console.log(`Minimum savings: ${MIN_SAVINGS}%`);
 
@@ -75,10 +76,9 @@ async function postDeals() {
       );
     } else {
       if (FETCH_GAME_DETAILS) {
-        deals = await api.getDealsWithGameDetails(apiConfig, DEAL_LIMIT, MIN_SAVINGS);
+        deals = await api.getDealsWithGameDetails(apiConfig, MIN_SAVINGS, DEAL_LIMIT);
       } else {
-        deals = await api.getDeals(apiConfig, DEAL_LIMIT);
-        deals = deals.filter(deal => parseFloat(deal.savings) >= MIN_SAVINGS);
+        deals = await api.getDeals(apiConfig, MIN_SAVINGS, DEAL_LIMIT);
       }
     }
 

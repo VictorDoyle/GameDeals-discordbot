@@ -1,4 +1,4 @@
-import { CheapSharkDeal, ApiConfig, GameDetails, DealHistory } from '../types';
+import { CheapSharkDeal, ApiConfig, GameDetails } from '../types';
 
 export class CheapSharkAPI {
   private baseUrl: string = 'https://www.cheapshark.com/api/1.0';
@@ -38,7 +38,7 @@ export class CheapSharkAPI {
     }
   }
 
-  async getDeals(config: ApiConfig, limit?: number): Promise<CheapSharkDeal[]> {
+  async getDeals(config: ApiConfig, minSavings?: number, limit?: number): Promise<CheapSharkDeal[]> {
     const queryString = this.buildQueryParams(config);
     const url = `${this.baseUrl}/deals?${queryString}`;
 
@@ -63,8 +63,14 @@ export class CheapSharkAPI {
         console.log(`Filtered to ${deals.length} deals with ${config.minReviewCount}+ reviews`);
       }
 
+      if (minSavings && minSavings > 0) {
+        deals = deals.filter(deal => parseFloat(deal.savings) >= minSavings);
+        console.log(`Filtered to ${deals.length} deals with ${minSavings}%+ savings`);
+      }
+
       if (limit && deals.length > limit) {
-        return deals.slice(0, limit);
+        deals = deals.slice(0, limit);
+        console.log(`Limited to ${limit} deals`);
       }
 
       return deals;
@@ -74,8 +80,8 @@ export class CheapSharkAPI {
     }
   }
 
-  async getDealsWithGameDetails(config: ApiConfig, limit?: number, minSavings?: number): Promise<CheapSharkDeal[]> {
-    const deals = await this.getDeals(config, limit);
+  async getDealsWithGameDetails(config: ApiConfig, minSavings?: number, limit?: number): Promise<CheapSharkDeal[]> {
+    const deals = await this.getDeals(config, minSavings, limit);
     const enhancedDeals: CheapSharkDeal[] = [];
 
     for (const deal of deals) {
@@ -83,12 +89,6 @@ export class CheapSharkAPI {
 
       if (gameDetails && gameDetails.deals) {
         const allDeals = gameDetails.deals;
-        const currentDealSavings = parseFloat(deal.savings);
-
-        if (minSavings && currentDealSavings < minSavings) {
-          continue;
-        }
-
         const cheaperStores = allDeals
           .filter(d => parseFloat(d.price) < parseFloat(deal.salePrice))
           .map(d => d.storeID);
@@ -100,9 +100,7 @@ export class CheapSharkAPI {
 
         enhancedDeals.push(dealWithExtras);
       } else {
-        if (!minSavings || parseFloat(deal.savings) >= minSavings) {
-          enhancedDeals.push(deal);
-        }
+        enhancedDeals.push(deal);
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -126,15 +124,12 @@ export class CheapSharkAPI {
 
       let deals: CheapSharkDeal[];
       if (fetchGameDetails) {
-        deals = await this.getDealsWithGameDetails(storeConfig, dealsPerStore, minSavings);
+        deals = await this.getDealsWithGameDetails(storeConfig, minSavings, dealsPerStore);
       } else {
-        deals = await this.getDeals(storeConfig, dealsPerStore);
-
-        if (minSavings) {
-          deals = deals.filter(deal => parseFloat(deal.savings) >= minSavings);
-        }
+        deals = await this.getDeals(storeConfig, minSavings, dealsPerStore);
       }
 
+      console.log(`Got ${deals.length} deals from store ${storeID}`);
       allDeals.push(...deals);
 
       await new Promise(resolve => setTimeout(resolve, 1000));
