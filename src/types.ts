@@ -18,6 +18,7 @@ export interface CheapSharkDeal {
   lastChange: number;
   dealRating: string;
   thumb: string;
+  cheaperStores?: string[];
 }
 
 export interface ApiConfig {
@@ -31,4 +32,35 @@ export interface ApiConfig {
   storeID?: number;
   pageSize?: number;
   minReviewCount?: number;
+  minDealRating?: number;
+}
+
+export interface GameDeal {
+  storeID: string;
+  dealID: string;
+  price: string;
+  retailPrice: string;
+  savings: string;
+}
+
+export interface GameInfo {
+  title: string;
+  steamAppID: string | null;
+  thumb: string;
+}
+
+export interface CheapestPriceEver {
+  price: string;
+  date: number;
+}
+
+export interface GameDetails {
+  info: GameInfo;
+  cheapestPriceEver: CheapestPriceEver;
+  deals: GameDeal[];
+}
+
+export interface DealHistory {
+  postedDeals: Record<string, number>;
+  lastRotation: number;
 }

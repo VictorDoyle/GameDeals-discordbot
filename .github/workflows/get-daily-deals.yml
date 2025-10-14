@@ -35,6 +35,19 @@ jobs:
           LOWER_PRICE: ${{ vars.LOWER_PRICE }}
           MIN_METACRITIC: ${{ vars.MIN_METACRITIC }}
           MIN_STEAM_RATING: ${{ vars.MIN_STEAM_RATING }}
+          MIN_REVIEW_COUNT: ${{ vars.MIN_REVIEW_COUNT || '350' }}
           ON_SALE: ${{ vars.ON_SALE || 'true' }}
           STORE_ID: ${{ vars.STORE_ID }}
+          DEALS_PER_STORE: ${{ vars.DEALS_PER_STORE || '3' }}
+          MIN_SAVINGS: ${{ vars.MIN_SAVINGS || '35' }}
+          FETCH_GAME_DETAILS: ${{ vars.FETCH_GAME_DETAILS || 'false' }}
+          DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '7' }}
         run: npm start
+
+      - name: Commit deal history
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add deal-history.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update deal history [skip ci]"
+          git push

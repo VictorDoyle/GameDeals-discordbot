@@ -1,4 +1,4 @@
-import { CheapSharkDeal, ApiConfig } from '../types';
+import { CheapSharkDeal, ApiConfig, GameDetails, DealHistory } from '../types';
 
 export class CheapSharkAPI {
   private baseUrl: string = 'https://www.cheapshark.com/api/1.0';
@@ -17,6 +17,25 @@ export class CheapSharkAPI {
     if (config.pageSize !== undefined) params.append('pageSize', config.pageSize.toString());
 
     return params.toString();
+  }
+
+  async getGameDetails(gameID: string): Promise<GameDetails | null> {
+    const url = `${this.baseUrl}/games?id=${gameID}`;
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        console.error(`Failed to fetch game details for ${gameID}: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json() as GameDetails;
+      return data;
+    } catch (error) {
+      console.error(`Error fetching game details for ${gameID}:`, error);
+      return null;
+    }
   }
 
   async getDeals(config: ApiConfig, limit?: number): Promise<CheapSharkDeal[]> {
@@ -44,6 +63,14 @@ export class CheapSharkAPI {
         console.log(`Filtered to ${deals.length} deals with ${config.minReviewCount}+ reviews`);
       }
 
+      if (config.minDealRating && config.minDealRating > 0) {
+        deals = deals.filter(deal => {
+          const dealRating = parseFloat(deal.dealRating || '0');
+          return dealRating >= config.minDealRating!;
+        });
+        console.log(`Filtered to ${deals.length} deals with ${config.minDealRating}+ deal rating`);
+      }
+
       if (limit && deals.length > limit) {
         return deals.slice(0, limit);
       }
@@ -55,13 +82,67 @@ export class CheapSharkAPI {
     }
   }
 
-  async getDealsFromMultipleStores(config: ApiConfig, storeIDs: number[], dealsPerStore: number): Promise<CheapSharkDeal[]> {
+  async getDealsWithGameDetails(config: ApiConfig, limit?: number, minSavings?: number): Promise<CheapSharkDeal[]> {
+    const deals = await this.getDeals(config, limit);
+    const enhancedDeals: CheapSharkDeal[] = [];
+
+    for (const deal of deals) {
+      const gameDetails = await this.getGameDetails(deal.gameID);
+
+      if (gameDetails && gameDetails.deals) {
+        const allDeals = gameDetails.deals;
+        const currentDealSavings = parseFloat(deal.savings);
+
+        if (minSavings && currentDealSavings < minSavings) {
+          continue;
+        }
+
+        const cheaperStores = allDeals
+          .filter(d => parseFloat(d.price) < parseFloat(deal.salePrice))
+          .map(d => d.storeID);
+
+        const dealWithExtras: any = {
+          ...deal,
+          cheaperStores: cheaperStores
+        };
+
+        enhancedDeals.push(dealWithExtras);
+      } else {
+        if (!minSavings || parseFloat(deal.savings) >= minSavings) {
+          enhancedDeals.push(deal);
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    return enhancedDeals;
+  }
+
+  async getDealsFromMultipleStores(
+    config: ApiConfig,
+    storeIDs: number[],
+    dealsPerStore: number,
+    minSavings?: number,
+    fetchGameDetails: boolean = false
+  ): Promise<CheapSharkDeal[]> {
     const allDeals: CheapSharkDeal[] = [];
 
     for (const storeID of storeIDs) {
       console.log(`Fetching ${dealsPerStore} deals from store ${storeID}...`);
       const storeConfig = { ...config, storeID };
-      const deals = await this.getDeals(storeConfig, dealsPerStore);
+
+      let deals: CheapSharkDeal[];
+      if (fetchGameDetails) {
+        deals = await this.getDealsWithGameDetails(storeConfig, dealsPerStore, minSavings);
+      } else {
+        deals = await this.getDeals(storeConfig, dealsPerStore);
+
+        if (minSavings) {
+          deals = deals.filter(deal => parseFloat(deal.savings) >= minSavings);
+        }
+      }
+
       allDeals.push(...deals);
 
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -71,7 +152,7 @@ export class CheapSharkAPI {
     return allDeals;
   }
 
-  formatDealMessage(deal: CheapSharkDeal): string {
+  formatDealMessage(deal: CheapSharkDeal, stores: Map<string, string>): string {
     const savings = parseFloat(deal.savings).toFixed(0);
     const salePrice = parseFloat(deal.salePrice).toFixed(2);
     const normalPrice = parseFloat(deal.normalPrice).toFixed(2);
@@ -92,9 +173,41 @@ export class CheapSharkAPI {
       message += `Metacritic: ${deal.metacriticScore}/100\n`;
     }
 
+    const cheaperStores = (deal as any).cheaperStores;
+    if (cheaperStores && cheaperStores.length > 0) {
+      const storeNames = cheaperStores
+        .map((id: string) => stores.get(id) || `Store ${id}`)
+        .join(', ');
+      message += `Cheaper at: ${storeNames}\n`;
+    }
+
     message += `Link: https://www.cheapshark.com/redirect?dealID=${deal.dealID}\n\n`;
 
     return message;
+  }
+
+  async getStores(): Promise<Map<string, string>> {
+    const url = `${this.baseUrl}/stores`;
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch stores: ${response.status}`);
+      }
+
+      const stores = await response.json() as Array<{ storeID: string; storeName: string }>;
+      const storeMap = new Map<string, string>();
+
+      stores.forEach(store => {
+        storeMap.set(store.storeID, store.storeName);
+      });
+
+      return storeMap;
+    } catch (error) {
+      console.error('Error fetching stores:', error);
+      return new Map();
+    }
   }
 
   getStoreIDFromName(storeName: string): number | undefined {
