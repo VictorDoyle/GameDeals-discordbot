@@ -32,7 +32,6 @@ export interface ApiConfig {
   storeID?: number;
   pageSize?: number;
   minReviewCount?: number;
-  minDealRating?: number;
 }
 
 export interface GameDeal {

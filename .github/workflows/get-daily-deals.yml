@@ -41,7 +41,6 @@ jobs:
           MIN_METACRITIC: ${{ vars.MIN_METACRITIC }}
           MIN_STEAM_RATING: ${{ vars.MIN_STEAM_RATING }}
           MIN_REVIEW_COUNT: ${{ vars.MIN_REVIEW_COUNT || '350' }}
-          MIN_DEAL_RATING: ${{ vars.MIN_DEAL_RATING || '7.0' }}
           ON_SALE: ${{ vars.ON_SALE || 'true' }}
           STORE_ID: ${{ vars.STORE_ID }}
           DEALS_PER_STORE: ${{ vars.DEALS_PER_STORE || '3' }}

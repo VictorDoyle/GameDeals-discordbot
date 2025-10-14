@@ -63,14 +63,6 @@ export class CheapSharkAPI {
         console.log(`Filtered to ${deals.length} deals with ${config.minReviewCount}+ reviews`);
       }
 
-      if (config.minDealRating && config.minDealRating > 0) {
-        deals = deals.filter(deal => {
-          const dealRating = parseFloat(deal.dealRating || '0');
-          return dealRating >= config.minDealRating!;
-        });
-        console.log(`Filtered to ${deals.length} deals with ${config.minDealRating}+ deal rating`);
-      }
-
       if (limit && deals.length > limit) {
         return deals.slice(0, limit);
       }

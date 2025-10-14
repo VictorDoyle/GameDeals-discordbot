@@ -16,7 +16,6 @@ const LOWER_PRICE = process.env.LOWER_PRICE ? parseFloat(process.env.LOWER_PRICE
 const MIN_METACRITIC = process.env.MIN_METACRITIC ? parseInt(process.env.MIN_METACRITIC) : undefined;
 const MIN_STEAM_RATING = process.env.MIN_STEAM_RATING ? parseInt(process.env.MIN_STEAM_RATING) : undefined;
 const MIN_REVIEW_COUNT = process.env.MIN_REVIEW_COUNT ? parseInt(process.env.MIN_REVIEW_COUNT) : undefined;
-const MIN_DEAL_RATING = process.env.MIN_DEAL_RATING ? parseFloat(process.env.MIN_DEAL_RATING) : 7.0;
 const ON_SALE = process.env.ON_SALE === 'true';
 const STORE_IDS = process.env.STORE_ID ? process.env.STORE_ID.split(',').map(id => parseInt(id.trim())) : [];
 const DEALS_PER_STORE = parseInt(process.env.DEALS_PER_STORE || '3');
@@ -51,7 +50,6 @@ async function postDeals() {
       metacritic: MIN_METACRITIC,
       steamRating: MIN_STEAM_RATING,
       minReviewCount: MIN_REVIEW_COUNT,
-      minDealRating: MIN_DEAL_RATING,
       onSale: ON_SALE,
       pageSize: 60
     };
@@ -108,7 +106,6 @@ async function postDeals() {
       await channel.send(message);
       console.log(`Posted deal ${i + 1}/${newDeals.length}: ${deal.title}`);
 
-      //temp
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 

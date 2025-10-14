@@ -12,3 +12,8 @@ Where:
 3: GreenMan Gaming
 11: Humble Store
 15: Fanatical
+
+
+## Docker run
+
+`docker run -it --rm -v ${PWD}:/src -w /src node:22-alpine sh`
