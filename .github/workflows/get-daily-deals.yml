@@ -2,7 +2,7 @@ name: Post Daily Game Deals
 
 on:
   schedule:
-    - cron: "0 14 * * *"
+    - cron: "0 0 */3 * *"
   workflow_dispatch:
 
 permissions:
