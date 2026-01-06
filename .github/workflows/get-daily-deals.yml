@@ -5,6 +5,9 @@ on:
     - cron: "0 14 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   post-deals:
     runs-on: ubuntu-latest
@@ -12,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -29,12 +34,19 @@ jobs:
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
-          DEAL_LIMIT: ${{ vars.DEAL_LIMIT || '20' }}
-          SORT_BY: ${{ vars.SORT_BY || 'Savings' }}
-          UPPER_PRICE: ${{ vars.UPPER_PRICE }}
-          LOWER_PRICE: ${{ vars.LOWER_PRICE }}
-          MIN_METACRITIC: ${{ vars.MIN_METACRITIC }}
-          MIN_STEAM_RATING: ${{ vars.MIN_STEAM_RATING }}
-          ON_SALE: ${{ vars.ON_SALE || 'true' }}
-          STORE_ID: ${{ vars.STORE_ID }}
+          ITAD_API_KEY: ${{ secrets.ITAD_API_KEY }}
+          DEAL_LIMIT: ${{ vars.DEAL_LIMIT || '50' }}
+          MIN_SAVINGS: ${{ vars.MIN_SAVINGS || '30' }}
+          MIN_REVIEW_COUNT: ${{ vars.MIN_REVIEW_COUNT || '150' }}
+          COUNTRY: ${{ vars.COUNTRY || 'US' }}
+          SHOP_IDS: ${{ vars.SHOP_IDS || '61,35,37,24,29,36,49' }}
+          DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '7' }}
         run: npm start
+
+      - name: Commit deal history
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add deal-history.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update deal history [skip ci]"
+          git push
