@@ -37,7 +37,7 @@ jobs:
           ITAD_API_KEY: ${{ secrets.ITAD_API_KEY }}
           DEAL_LIMIT: ${{ vars.DEAL_LIMIT || '50' }}
           MIN_SAVINGS: ${{ vars.MIN_SAVINGS || '30' }}
-          MIN_REVIEW_COUNT: ${{ vars.MIN_REVIEW_COUNT || '150' }}
+          MAX_SAVINGS: ${{ vars.MAX_SAVINGS || '85' }}
           COUNTRY: ${{ vars.COUNTRY || 'US' }}
           SHOP_IDS: ${{ vars.SHOP_IDS || '61,35,37,24,29,36,49' }}
           DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '7' }}

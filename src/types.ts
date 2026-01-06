@@ -67,7 +67,7 @@ export interface ITADConfig {
   country?: string;
   offset?: number;
   limit?: number;
-  sort?: '-cut' | 'price' | '-price' | 'title' | '-reviews';
+  sort?: '-cut' | 'price' | '-price' | '-hot' | 'title' | '-reviews';
   shops?: number[];
 }
 

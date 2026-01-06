@@ -117,41 +117,59 @@ class ITADTestSuite {
       const deals = await this.api.getDeals({
         country: 'US',
         limit: 50,
-        shops: [61, 35, 6]
+        shops: [61, 35, 37, 24, 29, 36, 49]
       });
 
       const minSavings = 30;
-      const minReviewCount = 150;
+      const maxSavings = 85;
 
       console.log(`Total deals fetched: ${deals.length}`);
 
-      const filtered = this.api.filterDeals(deals, minSavings, minReviewCount);
+      // Check what's being filtered at each step
+      console.log('\n--- FILTER DEBUG ---');
+
+      let step1 = deals.filter(deal => deal.deal);
+      console.log(`After checking deal exists: ${step1.length}`);
+
+      let step2 = step1.filter(deal => deal.type === 'game');
+      console.log(`After type === 'game': ${step2.length}`);
+      console.log(`Rejected types:`, [...new Set(step1.filter(d => d.type !== 'game').map(d => d.type))]);
+
+      let step3 = step2.filter(deal => {
+        const cut = deal.deal.cut || 0;
+        return cut >= minSavings && cut <= maxSavings;
+      });
+      console.log(`After savings filter (${minSavings}-${maxSavings}%): ${step3.length}`);
+      console.log(`Sample cuts that passed:`, step3.slice(0, 5).map(d => `${d.title}: ${d.deal.cut}%`));
+
+      let step4 = step3.filter(deal => {
+        return deal.deal.drm?.some(drmInfo => drmInfo.name === 'Steam');
+      });
+      console.log(`After Steam DRM filter: ${step4.length}`);
+      console.log(`Sample DRM arrays from step3:`, step3.slice(0, 5).map(d => `${d.title}: ${JSON.stringify(d.deal.drm)}`));
+
+      console.log('--- END DEBUG ---\n');
+
+      const filtered = this.api.filterDeals(deals, minSavings, maxSavings);
 
       console.log(`Deals after filtering: ${filtered.length}`);
 
       if (filtered.length === 0) {
         console.log('WARNING: No deals passed filters. This may indicate:');
         console.log('  - Filters are too strict');
-        console.log('  - No Steam deals with sufficient reviews currently available');
-        console.log('  - Consider lowering MIN_SAVINGS or MIN_REVIEW_COUNT');
+        console.log('  - No Steam deals currently available');
+        console.log('  - Consider lowering MIN_SAVINGS');
         this.pass('Filtering (no results but function works)');
         return;
       }
 
       let allPassedSavings = true;
-      let allPassedReviews = true;
       let allHaveSteamDRM = true;
 
       for (const deal of filtered) {
-        if (deal.deal.cut < minSavings) {
+        if (deal.deal.cut < minSavings || deal.deal.cut > maxSavings) {
           allPassedSavings = false;
           console.log(`  Failed savings: ${deal.title} - ${deal.deal.cut}%`);
-        }
-
-        const steamReview = deal.reviews?.find(review => review.source === 'Steam');
-        if (!steamReview || steamReview.count < minReviewCount) {
-          allPassedReviews = false;
-          console.log(`  Failed reviews: ${deal.title} - ${steamReview?.count || 0} reviews`);
         }
 
         const hasSteamDRM = deal.deal.drm?.some(drmInfo => drmInfo.name === 'Steam');
@@ -162,15 +180,9 @@ class ITADTestSuite {
       }
 
       if (allPassedSavings) {
-        this.pass(`Savings filter (min ${minSavings}%)`);
+        this.pass(`Savings filter (min ${minSavings}%, max ${maxSavings}%)`);
       } else {
         this.fail(`Savings filter`, 'Some deals below minimum savings');
-      }
-
-      if (allPassedReviews) {
-        this.pass(`Review count filter (min ${minReviewCount})`);
-      } else {
-        this.fail(`Review count filter`, 'Some deals below minimum reviews');
       }
 
       if (allHaveSteamDRM) {

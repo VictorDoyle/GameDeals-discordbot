@@ -20,7 +20,7 @@ export class ITADApi {
     params.append('country', config.country || 'US');
     params.append('offset', (config.offset || 0).toString());
     params.append('limit', (config.limit || 100).toString());
-    params.append('sort', config.sort || '-cut');
+    params.append('sort', config.sort || '-hot');
     params.append('nondeals', 'false');
     params.append('mature', 'false');
 
@@ -72,30 +72,20 @@ export class ITADApi {
       return new Map();
     }
   }
-
   filterDeals(
     deals: ITADDeal[],
     minSavings: number = 30,
-    minReviewCount: number = 100,
-    minRating?: number
+    maxSavings: number = 85
   ): ITADDeal[] {
     return deals.filter(deal => {
       if (!deal.deal) return false;
 
+      // Only accept games, not DLC
+      if (deal.type !== 'game') return false;
+
+      // max the savings at 85% to avoid junk/shovelware games
       const cut = deal.deal.cut || 0;
-      if (cut < minSavings) return false;
-
-      const hasSteamReview = deal.reviews?.some(review => review.source === 'Steam');
-      if (!hasSteamReview) return false;
-
-      const steamReview = deal.reviews?.find(review => review.source === 'Steam');
-      if (!steamReview) return false;
-
-      if ((steamReview.count || 0) < minReviewCount) return false;
-
-      if (minRating !== undefined) {
-        if ((steamReview.score || 0) < minRating) return false;
-      }
+      if (cut < minSavings || cut > maxSavings) return false;
 
       const hasSteamDRM = deal.deal.drm?.some(drmInfo => drmInfo.name === 'Steam');
       if (!hasSteamDRM) return false;

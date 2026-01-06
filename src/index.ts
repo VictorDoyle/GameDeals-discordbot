@@ -17,8 +17,8 @@ const ITAD_API_KEY: string = process.env.ITAD_API_KEY;
 
 const DEAL_LIMIT = parseInt(process.env.DEAL_LIMIT || '50');
 const MIN_SAVINGS = parseInt(process.env.MIN_SAVINGS || '30');
-const MIN_REVIEW_COUNT = parseInt(process.env.MIN_REVIEW_COUNT || '100');
-const MIN_RATING = parseInt(process.env.MIN_RATING || '70');
+const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || '85');
+
 const COUNTRY = process.env.COUNTRY || 'US';
 const DEDUPLICATION_DAYS = parseInt(process.env.DEDUPLICATION_DAYS || '7');
 const TEST_MODE = process.env.TEST_MODE === 'true';
@@ -44,8 +44,6 @@ async function postDeals() {
     console.log(`Mode: ${TEST_MODE ? 'TEST (Console Only)' : 'LIVE (Discord)'}`);
     console.log(`Deal limit: ${DEAL_LIMIT}`);
     console.log(`Min savings: ${MIN_SAVINGS}%`);
-    console.log(`Min review count: ${MIN_REVIEW_COUNT}`);
-    console.log(`Min rating: ${MIN_RATING}%`);
     console.log(`Country: ${COUNTRY}`);
     console.log(`Shops: ${SHOP_IDS.join(', ')}`);
     console.log('='.repeat(60));
@@ -68,8 +66,7 @@ async function postDeals() {
     let filteredDeals = api.filterDeals(
       allDeals,
       MIN_SAVINGS,
-      MIN_REVIEW_COUNT,
-      MIN_RATING
+      MAX_SAVINGS
     );
     console.log(`✓ ${filteredDeals.length} deals after filtering`);
 
