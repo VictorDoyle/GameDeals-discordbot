@@ -15,9 +15,9 @@ const DISCORD_TOKEN: string = process.env.DISCORD_TOKEN;
 const CHANNEL_ID: string = process.env.DISCORD_CHANNEL_ID;
 const ITAD_API_KEY: string = process.env.ITAD_API_KEY;
 
-const DEAL_LIMIT = parseInt(process.env.DEAL_LIMIT || '50');
+const DEAL_LIMIT = parseInt(process.env.DEAL_LIMIT || '10');
 const MIN_SAVINGS = parseInt(process.env.MIN_SAVINGS || '30');
-const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || '85');
+const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || '95');
 
 const COUNTRY = process.env.COUNTRY || 'US';
 const DEDUPLICATION_DAYS = parseInt(process.env.DEDUPLICATION_DAYS || '7');
@@ -54,11 +54,18 @@ async function postDeals() {
       country: COUNTRY,
       offset: 0,
       limit: 200,
-      sort: '-cut',
+      sort: '-hot',
       shops: SHOP_IDS
     };
 
-    console.log('\n📡 Fetching deals from ITAD API...');
+    console.log('\n� Configuration:');
+    console.log(`   Country: ${COUNTRY}`);
+    console.log(`   Shop IDs: ${SHOP_IDS.join(', ')}`);
+    console.log(`   Min Savings: ${MIN_SAVINGS}%`);
+    console.log(`   Max Savings: ${MAX_SAVINGS}%`);
+    console.log(`   Limit: ${DEAL_LIMIT}`);
+
+    console.log('\n�📡 Fetching deals from ITAD API...');
     let allDeals = await api.getDeals(config);
     console.log(`✓ Fetched ${allDeals.length} raw deals from ITAD`);
 
@@ -75,9 +82,17 @@ async function postDeals() {
     console.log('\n🔄 Checking for duplicates...');
     const newDeals = deduplicationService.filterNewDeals(filteredDeals);
     console.log(`✓ ${newDeals.length} new deals after deduplication`);
+    console.log(`   - Original filtered deals: ${filteredDeals.length}`);
+    console.log(`   - Duplicate deals filtered out: ${filteredDeals.length - newDeals.length}`);
 
     if (newDeals.length === 0) {
       console.log('\n⚠️  No new deals found matching criteria');
+
+      // Still save the deal history to ensure file exists for git
+      if (filteredDeals.length > 0) {
+        console.log('💾 Updating deal history with existing deals...');
+        deduplicationService.markDealsAsPosted([]);
+      }
 
       if (!TEST_MODE) {
         const channel = await client.channels.fetch(CHANNEL_ID) as TextChannel;
@@ -106,6 +121,11 @@ async function postDeals() {
       console.log('='.repeat(60));
       console.log('✓ TEST COMPLETE - No deals posted to Discord');
       console.log('='.repeat(60));
+
+      // Ensure deal history file exists even in test mode
+      console.log('💾 Saving deal history file for GitHub Action...');
+      deduplicationService.markDealsAsPosted([]);
+
       return;
     }
 

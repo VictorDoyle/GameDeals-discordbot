@@ -8,6 +8,13 @@ export class DeduplicationService {
   constructor(historyFilePath: string = './deal-history.json', maxAgeInDays: number = 7) {
     this.historyFilePath = historyFilePath;
     this.maxAgeInDays = maxAgeInDays;
+    // Ensure the history file exists on initialization
+    this.ensureHistoryFileExists();
+  }
+
+  private ensureHistoryFileExists(): void {
+    const history = this.loadHistory();
+    this.saveHistory(history);
   }
 
   private loadHistory(): DealHistory {
@@ -78,15 +85,14 @@ export class DeduplicationService {
   }
 
   filterNewDeals<T extends { id: string; deal?: { shop: { id: number } } }>(deals: T[]): T[] {
-    const history = this.loadHistory();
+    let history = this.loadHistory();
 
     if (this.shouldRotate(history)) {
-      const rotatedHistory = this.rotateHistory(history);
-      this.saveHistory(rotatedHistory);
-      return deals.filter(deal => {
-        const key = this.getDealKey(deal);
-        return !(key in rotatedHistory.postedDeals);
-      });
+      history = this.rotateHistory(history);
+      this.saveHistory(history);
+    } else {
+      // Always ensure the file exists, even if no rotation needed
+      this.saveHistory(history);
     }
 
     return deals.filter(deal => {

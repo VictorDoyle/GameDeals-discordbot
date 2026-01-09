@@ -77,6 +77,36 @@ export class ITADApi {
     minSavings: number = 30,
     maxSavings: number = 85
   ): ITADDeal[] {
+    console.log('\n--- FILTER DEBUG (ITADApi) ---');
+
+    const step1 = deals.filter(deal => deal.deal);
+    console.log(`After checking deal exists: ${step1.length}`);
+
+    const step2 = step1.filter(deal => deal.type === 'game');
+    console.log(`After type === 'game': ${step2.length}`);
+    console.log(`Rejected types:`, [...new Set(step1.filter(d => d.type !== 'game').map(d => d.type))]);
+
+    const step3 = step2.filter(deal => {
+      const cut = deal.deal.cut || 0;
+      return cut >= minSavings && cut <= maxSavings;
+    });
+    console.log(`After savings filter (${minSavings}-${maxSavings}%): ${step3.length}`);
+
+    // Debug: Show actual cut values from step2
+    const cuts = step2.slice(0, 10).map(d => `${d.title}: ${d.deal.cut}%`);
+    console.log(`Sample cuts from step2:`, cuts);
+    const cutValues = step2.map(d => d.deal.cut || 0);
+    const minCut = Math.min(...cutValues);
+    const maxCut = Math.max(...cutValues);
+    console.log(`Cut range: ${minCut}% to ${maxCut}%`);
+
+    const step4 = step3.filter(deal => {
+      return deal.deal.drm?.some(drmInfo => drmInfo.name === 'Steam');
+    });
+    console.log(`After Steam DRM filter: ${step4.length}`);
+    console.log(`Sample DRM arrays:`, step3.slice(0, 3).map(d => `${d.title}: ${JSON.stringify(d.deal.drm)}`));
+    console.log('--- END FILTER DEBUG ---\n');
+
     return deals.filter(deal => {
       if (!deal.deal) return false;
 
