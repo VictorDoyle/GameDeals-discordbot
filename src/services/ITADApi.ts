@@ -108,7 +108,8 @@ export class ITADApi {
     console.log(`Sample DRM arrays:`, step3.slice(0, 3).map(d => `${d.title}: ${JSON.stringify(d.deal.drm)}`));
     console.log('--- END FILTER DEBUG ---\n');
 
-    return deals.filter(deal => {
+    // Apply core filters (type, savings, Steam DRM) first
+    const baseFiltered = deals.filter(deal => {
       if (!deal.deal) return false;
 
       // Only accept games, not DLC
@@ -123,6 +124,26 @@ export class ITADApi {
 
       return true;
     });
+
+    console.log(`After core filters: ${baseFiltered.length}`);
+
+    // exclude deals expiring within the next 48 hours
+    const now = Date.now();
+    const EXPIRY_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+    const finalFiltered = baseFiltered.filter(deal => {
+      const expiry = deal.deal?.expiry;
+      if (!expiry) return true;
+
+      const expiryTime = Date.parse(expiry);
+      if (isNaN(expiryTime)) return true;
+
+      return (expiryTime - now) > EXPIRY_WINDOW_MS;
+    });
+
+    console.log(`After expiry (>48h) filter: ${finalFiltered.length}`);
+
+    return finalFiltered;
   }
 
   async getGameInfo(gameIds: string[]): Promise<Map<string, any>> {

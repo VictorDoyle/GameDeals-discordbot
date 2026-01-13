@@ -154,11 +154,29 @@ class ITADTestSuite {
 
       console.log(`Deals after filtering: ${filtered.length}`);
 
+      // Skip deals expiring in 48h
+      const now = Date.now();
+      const EXPIRY_WINDOW_MS = 48 * 60 * 60 * 1000;
+      let allExpiryOk = true;
+      for (const deal of filtered) {
+        const expiry = deal.deal.expiry;
+        if (expiry) {
+          const expiryTime = Date.parse(expiry);
+          if (!isNaN(expiryTime) && (expiryTime - now) <= EXPIRY_WINDOW_MS) {
+            allExpiryOk = false;
+            console.log(`  Expiry too soon: ${deal.title} expires at ${expiry}`);
+          }
+        }
+      }
+
+      if (allExpiryOk) {
+        this.pass('Expiry filter (>48h)');
+      } else {
+        this.fail('Expiry filter', 'Some deals expire within 48 hours');
+      }
+
       if (filtered.length === 0) {
-        console.log('WARNING: No deals passed filters. This may indicate:');
-        console.log('  - Filters are too strict');
-        console.log('  - No Steam deals currently available');
-        console.log('  - Consider lowering MIN_SAVINGS');
+        console.log('WARNING: No deals passed filters.');
         this.pass('Filtering (no results but function works)');
         return;
       }
