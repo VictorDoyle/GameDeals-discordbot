@@ -1,4 +1,5 @@
 import { ITADDeal, ITADConfig } from '../types';
+import { EmbedBuilder } from 'discord.js';
 
 export class ITADApi {
   private baseUrl: string = 'https://api.isthereanydeal.com';
@@ -175,5 +176,47 @@ export class ITADApi {
     message += `Link: ${deal.deal.url}\n\n`;
 
     return message;
+  }
+
+  formatDealEmbed(deal: ITADDeal): EmbedBuilder {
+    const price = deal.deal.price;
+    const regular = deal.deal.regular;
+    const cut = deal.deal.cut;
+    const shop = deal.deal.shop;
+
+    const embed = new EmbedBuilder()
+      .setTitle(deal.title)
+      .setURL(deal.deal.url)
+      .setColor(deal.deal.flag === 'H' ? 0x00ff99 : 0x5865F2)
+      .addFields(
+        { name: 'Price', value: `${price.currency} ${price.amount.toFixed(2)} (was ${regular.amount.toFixed(2)})`, inline: true },
+        { name: 'Discount', value: `${cut}% OFF`, inline: true },
+        { name: 'Store', value: shop.name, inline: true }
+      );
+
+    if (deal.deal.flag === 'H') {
+      embed.setDescription('🔥 **HISTORICAL LOW**');
+    }
+
+    const steamReview = deal.reviews?.find(r => r.source === 'Steam');
+    if (steamReview) {
+      embed.addFields({ name: 'Steam Rating', value: `${steamReview.score}% (${steamReview.count.toLocaleString()} reviews)`, inline: true });
+    }
+
+    // Prefer boxart as thumbnail, fall back to banner or game image
+    const assets = (deal as any).assets || {};
+    const gameImage = (deal as any).game?.image;
+    const boxart = assets.boxart;
+    const banner600 = assets.banner600 || assets.banner300 || assets.banner;
+
+    if (boxart) {
+      embed.setThumbnail(boxart);
+    } else if (banner600) {
+      embed.setImage(banner600);
+    } else if (gameImage) {
+      embed.setThumbnail(gameImage);
+    }
+
+    return embed;
   }
 }

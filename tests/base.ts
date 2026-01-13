@@ -254,6 +254,98 @@ class ITADTestSuite {
     }
   }
 
+  async testEmbedFormatting(): Promise<void> {
+    console.log('\n--- Test 6: Discord Embed Formatting ---');
+    try {
+      const deals = await this.api.getDeals({ country: 'US', limit: 10, shops: [61] });
+
+      if (!deals || deals.length === 0) {
+        this.fail('Embed Formatting', 'No deals to test embed formatting');
+        return;
+      }
+
+      // Prefer a deal with assets or game image for testing image selection
+      let candidate: ITADDeal | null = null;
+      for (const d of deals) {
+        const assets = (d as any).assets || {};
+        const gameImage = (d as any).game?.image;
+        if (assets.boxart || assets.banner600 || gameImage) {
+          candidate = d;
+          break;
+        }
+      }
+
+      // If none matched, just use the first deal to validate structure
+      const deal = candidate || deals[0];
+
+      const embed = this.api.formatDealEmbed(deal);
+      const json = embed.toJSON();
+
+      // Title and URL
+      if (json.title === deal.title && json.url === deal.deal.url) {
+        this.pass('Embed title and URL');
+      } else {
+        this.fail('Embed title/URL', `Expected title ${deal.title} and url ${deal.deal.url}`);
+      }
+
+      // Fields: Price, Discount, Store
+      const fieldNames = (json.fields || []).map((f: any) => f.name);
+      const required = ['Price', 'Discount', 'Store'];
+      const missing = required.filter(r => !fieldNames.includes(r));
+      if (missing.length === 0) {
+        this.pass('Embed fields present');
+      } else {
+        this.fail('Embed fields', `Missing fields: ${missing.join(', ')}`);
+      }
+
+      // Description for historical low
+      if (deal.deal.flag === 'H') {
+        const desc = json.description || '';
+        if (desc.toLowerCase().includes('historical low')) {
+          this.pass('Embed historical low description');
+        } else {
+          this.fail('Embed historical low', 'Historical low flag set but description missing');
+        }
+      } else {
+        this.pass('Embed historical low (not applicable)');
+      }
+
+      // Image selection
+      const assets = (deal as any).assets || {};
+      const gameImage = (deal as any).game?.image;
+      const boxart = assets.boxart;
+      const banner600 = assets.banner600 || assets.banner300 || assets.banner;
+
+      const hasThumbnail = !!json.thumbnail?.url;
+      const hasImage = !!json.image?.url;
+
+      if (boxart) {
+        if (hasThumbnail && String(json.thumbnail?.url || '').includes(boxart)) {
+          this.pass('Embed thumbnail uses boxart');
+        } else {
+          this.fail('Embed thumbnail', 'Boxart present but not used as thumbnail');
+        }
+      } else if (banner600) {
+        if (hasImage && String(json.image?.url || '').includes(banner600)) {
+          this.pass('Embed image uses banner');
+        } else {
+          this.fail('Embed image', 'Banner present but not used as image');
+        }
+      } else if (gameImage) {
+        if (hasThumbnail && String(json.thumbnail?.url || '').includes(gameImage)) {
+          this.pass('Embed thumbnail uses game image');
+        } else {
+          this.fail('Embed game image', 'Game image present but not used');
+        }
+      } else {
+        this.pass('Embed image not applicable');
+      }
+
+    } catch (error) {
+      this.fail('Embed Formatting', error instanceof Error ? error.message : String(error));
+    }
+  }
+
   async testStoreFiltering(): Promise<void> {
     console.log('\n--- Test 5: Store Filtering ---');
     try {
@@ -329,6 +421,7 @@ class ITADTestSuite {
     await this.testResponseStructure();
     await this.testFiltering();
     await this.testMessageFormatting();
+    await this.testEmbedFormatting();
     await this.testStoreFiltering();
 
     this.printSummary();

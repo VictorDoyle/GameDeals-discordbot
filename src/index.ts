@@ -134,35 +134,15 @@ async function postDeals() {
     console.log('\n Posting to Discord...');
     const channel = await client.channels.fetch(CHANNEL_ID) as TextChannel;
 
-    // Build a single combined message (fallback to chunking if too long)
-    const items = newDeals.map((d, i) => `**${i + 1}. ${d.title}**\n${api.formatDealMessage(d)}`);
-    const combinedMessage = `**New Game Deals**\n\n${items.join('\n---\n')}`;
+    // Convert deals to embeds and send in batches (max 10 embeds per message)
+    const embeds = newDeals.map(d => api.formatDealEmbed(d));
 
-    // Discord message limit ~2000 chars; keep safe margin
-    const MAX = 1900;
-    if (combinedMessage.length <= MAX) {
-      await channel.send(combinedMessage);
-      console.log(`   ✓ Posted combined message with ${newDeals.length} deals`);
-    } else {
-      // Chunk messages into multiple posts
-      let buffer = '';
-      let part = 0;
-      for (const item of items) {
-        if ((buffer + '\n---\n' + item).length > MAX) {
-          part++;
-          await channel.send(buffer || item);
-          console.log(`  Posted chunk ${part}`);
-          buffer = item;
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } else {
-          buffer = buffer ? `${buffer}\n---\n${item}` : item;
-        }
-      }
-      if (buffer) {
-        part++;
-        await channel.send(buffer);
-        console.log(`  Posted chunk ${part}`);
-      }
+    const BATCH = 10;
+    for (let i = 0; i < embeds.length; i += BATCH) {
+      const batch = embeds.slice(i, i + BATCH);
+      await channel.send({ embeds: batch as any });
+      console.log(`Posted embeds ${i + 1}-${Math.min(i + BATCH, embeds.length)}`);
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     deduplicationService.markDealsAsPosted(newDeals);
