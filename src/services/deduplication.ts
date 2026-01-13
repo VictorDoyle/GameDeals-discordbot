@@ -72,9 +72,7 @@ export class DeduplicationService {
   }
 
   private getDealKey<T extends { id: string; deal?: { shop: { id: number } } }>(deal: T): string {
-    if ('deal' in deal && deal.deal) {
-      return `${deal.id}-${deal.deal.shop.id}`;
-    }
+    // Use the canonical deal id to deduplicate across shops/platforms
     return deal.id;
   }
 

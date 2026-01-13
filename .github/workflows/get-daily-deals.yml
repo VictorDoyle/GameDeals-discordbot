@@ -1,8 +1,9 @@
-name: Post Daily Game Deals
+name: Post Game Deals (every 5 days)
 
 on:
   schedule:
-    - cron: "0 14 * * *"
+    # Run at 14:00 UTC every 5th day of the month
+    - cron: "0 14 */5 * *"
   workflow_dispatch:
 
 permissions:
@@ -40,7 +41,7 @@ jobs:
           MAX_SAVINGS: ${{ vars.MAX_SAVINGS || '85' }}
           COUNTRY: ${{ vars.COUNTRY || 'US' }}
           SHOP_IDS: ${{ vars.SHOP_IDS || '61,35,37,24,29,36,49' }}
-          DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '7' }}
+          DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '5' }}
         run: npm start
 
       - name: Commit deal history

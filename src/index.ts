@@ -20,7 +20,7 @@ const MIN_SAVINGS = parseInt(process.env.MIN_SAVINGS || '30');
 const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || '95');
 
 const COUNTRY = process.env.COUNTRY || 'US';
-const DEDUPLICATION_DAYS = parseInt(process.env.DEDUPLICATION_DAYS || '7');
+const DEDUPLICATION_DAYS = parseInt(process.env.DEDUPLICATION_DAYS || '5');
 const TEST_MODE = process.env.TEST_MODE === 'true';
 
 const SHOP_IDS = process.env.SHOP_IDS
@@ -77,16 +77,18 @@ async function postDeals() {
     );
     console.log(`✓ ${filteredDeals.length} deals after filtering`);
 
-    filteredDeals = filteredDeals.slice(0, DEAL_LIMIT);
-
+    // First filter out deals based on history, then enforce the per-run limit
     console.log('\n🔄 Checking for duplicates...');
-    const newDeals = deduplicationService.filterNewDeals(filteredDeals);
+    let newDeals = deduplicationService.filterNewDeals(filteredDeals);
     console.log(`✓ ${newDeals.length} new deals after deduplication`);
     console.log(`   - Original filtered deals: ${filteredDeals.length}`);
     console.log(`   - Duplicate deals filtered out: ${filteredDeals.length - newDeals.length}`);
 
+    // Take up to the configured limit of new deals to post
+    newDeals = newDeals.slice(0, DEAL_LIMIT);
+
     if (newDeals.length === 0) {
-      console.log('\n⚠️  No new deals found matching criteria');
+      console.log('\n No new deals found matching criteria');
 
       // Still save the deal history to ensure file exists for git
       if (filteredDeals.length > 0) {
@@ -111,15 +113,15 @@ async function postDeals() {
       console.log('TEST MODE - Deals that would be posted:');
       console.log('='.repeat(60));
 
-      newDeals.forEach((deal, index) => {
-        console.log(`\n[${index + 1}/${newDeals.length}] ${deal.title}`);
-        console.log('-'.repeat(60));
-        const message = api.formatDealMessage(deal);
-        console.log(message);
-      });
+      const combined = newDeals.map((d, i) => `**${i + 1}.** ${d.title}\n\n${api.formatDealMessage(d)}`).join('\n---\n');
+      if (combined.length > 0) {
+        console.log(combined);
+      } else {
+        console.log('No new deals to display');
+      }
 
       console.log('='.repeat(60));
-      console.log('✓ TEST COMPLETE - No deals posted to Discord');
+      console.log('TEST COMPLETE - No deals posted to Discord');
       console.log('='.repeat(60));
 
       // Ensure deal history file exists even in test mode
@@ -132,48 +134,69 @@ async function postDeals() {
     console.log('\n Posting to Discord...');
     const channel = await client.channels.fetch(CHANNEL_ID) as TextChannel;
 
-    for (let i = 0; i < newDeals.length; i++) {
-      const deal = newDeals[i];
-      const message = api.formatDealMessage(deal);
+    // Build a single combined message (fallback to chunking if too long)
+    const items = newDeals.map((d, i) => `**${i + 1}. ${d.title}**\n${api.formatDealMessage(d)}`);
+    const combinedMessage = `**New Game Deals**\n\n${items.join('\n---\n')}`;
 
-      await channel.send(message);
-      console.log(`   ✓ [${i + 1}/${newDeals.length}] ${deal.title}`);
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    // Discord message limit ~2000 chars; keep safe margin
+    const MAX = 1900;
+    if (combinedMessage.length <= MAX) {
+      await channel.send(combinedMessage);
+      console.log(`   ✓ Posted combined message with ${newDeals.length} deals`);
+    } else {
+      // Chunk messages into multiple posts
+      let buffer = '';
+      let part = 0;
+      for (const item of items) {
+        if ((buffer + '\n---\n' + item).length > MAX) {
+          part++;
+          await channel.send(buffer || item);
+          console.log(`  Posted chunk ${part}`);
+          buffer = item;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } else {
+          buffer = buffer ? `${buffer}\n---\n${item}` : item;
+        }
+      }
+      if (buffer) {
+        part++;
+        await channel.send(buffer);
+        console.log(`  Posted chunk ${part}`);
+      }
     }
 
     deduplicationService.markDealsAsPosted(newDeals);
 
     console.log('\n' + '='.repeat(60));
-    console.log('✓ All deals posted successfully');
+    console.log(' All deals posted successfully');
     console.log('='.repeat(60));
   } catch (error) {
-    console.error('\n❌ Error posting deals:', error);
+    console.error('\n Error posting deals:', error);
     throw error;
   }
 }
 
 client.once('ready', async () => {
   if (!TEST_MODE) {
-    console.log(`✓ Logged in as ${client.user?.tag}`);
-    console.log(`✓ Channel ID: ${CHANNEL_ID}`);
+    console.log(` Logged in as ${client.user?.tag}`);
+    console.log(` Channel ID: ${CHANNEL_ID}`);
   }
 
   try {
     await postDeals();
   } catch (error) {
-    console.error('\n❌ Fatal error:', error);
+    console.error('\n Fatal error:', error);
     process.exit(1);
   }
 
-  console.log('\n✓ Job completed, exiting...');
+  console.log('\n Job completed, exiting...');
   process.exit(0);
 });
 
 if (TEST_MODE) {
   console.log(' TEST_MODE enabled - skipping Discord login\n');
   postDeals().then(() => {
-    console.log('\n✓ Test completed successfully');
+    console.log('\n Test completed successfully');
     process.exit(0);
   }).catch((error) => {
     console.error('\n Test failed:', error);
