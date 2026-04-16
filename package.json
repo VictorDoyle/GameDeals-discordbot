@@ -26,7 +26,7 @@
   },
   "homepage": "https://github.com/VictorDoyle/GameDeals-discordbot#readme",
   "dependencies": {
-    "discord.js": "^14.14.1",
+    "discord.js": "^14.26.3",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
