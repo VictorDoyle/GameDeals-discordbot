@@ -24,8 +24,8 @@ MIN_REVIEW_COUNT=150
 ## Run Tests
 
 ```bash
-npm run build
-npx ts-node test.ts
+yarn build
+yarn test
 ```
 
 ## What Gets Tested
@@ -130,7 +130,7 @@ Review the failed test details. Common issues:
 ### 1. Test Mode Run
 
 ```bash
-TEST_MODE=true npm start
+TEST_MODE=true yarn start
 ```
 
 This shows what would be posted without posting to Discord.
@@ -143,7 +143,7 @@ Create a test channel and post 2-3 deals:
 TEST_MODE=false
 DISCORD_CHANNEL_ID=test_channel_id
 DEAL_LIMIT=3
-npm start
+yarn start
 ```
 
 ### 3. Production
@@ -174,8 +174,8 @@ Verify at: https://isthereanydeal.com/apps/
 ### TypeScript Errors
 
 ```bash
-npm ci
-npm run build
+yarn install --frozen-lockfile
+yarn build
 ```
 
 ### Test Hangs

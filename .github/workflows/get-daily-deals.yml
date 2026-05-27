@@ -19,17 +19,20 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Enable Yarn
+        run: corepack enable
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
+          cache: "yarn"
 
       - name: Install dependencies
-        run: npm ci
+        run: yarn install --immutable
 
       - name: Build TypeScript
-        run: npm run build
+        run: yarn build
 
       - name: Post deals to Discord
         env:
@@ -42,7 +45,7 @@ jobs:
           COUNTRY: ${{ vars.COUNTRY || 'US' }}
           SHOP_IDS: ${{ vars.SHOP_IDS || '61,35,37,24,29,36,49' }}
           DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '5' }}
-        run: npm start
+        run: yarn start
 
       - name: Commit deal history
         run: |

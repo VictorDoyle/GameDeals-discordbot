@@ -57,9 +57,9 @@ You can fetch all available stores using the `/service/shops/v1` endpoint.
 ### 4. Install and Run
 
 ```bash
-npm install
-npm run build
-npm start
+yarn install
+yarn build
+yarn start
 ```
 
 ## Configuration Options
