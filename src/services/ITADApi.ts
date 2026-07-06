@@ -1,5 +1,25 @@
 import { EmbedBuilder } from "discord.js";
-import { ITADConfig, ITADDeal } from "../types";
+import { ITADConfig, ITADDeal, ITADDealsResponse } from "../types";
+import {
+  createDealMatcher,
+  DealFilterCriteria,
+  hasAnyDrmName,
+  savingsInRange,
+} from "./dealFilters";
+
+export type {
+  DealFilterCriteria,
+  DealPredicate,
+} from "./dealFilters";
+export {
+  createDealMatcher,
+  expiresAfterWindow,
+  hasAnyDrmName,
+  hasDealInfo,
+  isAllowedType,
+  parseDrmNamesFromEnv,
+  savingsInRange,
+} from "./dealFilters";
 
 export class ITADApi {
   private baseUrl: string = "https://api.isthereanydeal.com";
@@ -9,11 +29,12 @@ export class ITADApi {
     this.apiKey = apiKey;
   }
 
-  async getDeals(config: ITADConfig): Promise<ITADDeal[]> {
+  async fetchDealsPage(config: ITADConfig): Promise<ITADDealsResponse> {
+    const requestOffset = config.offset || 0;
     const params = new URLSearchParams();
 
     params.append("country", config.country || "US");
-    params.append("offset", (config.offset || 0).toString());
+    params.append("offset", requestOffset.toString());
     params.append("limit", (config.limit || 100).toString());
     params.append("sort", config.sort || "-cut");
     params.append("nondeals", "false");
@@ -23,9 +44,17 @@ export class ITADApi {
       params.append("shops", config.shops.join(","));
     }
 
-    const url = `${this.baseUrl}/deals/v2?key=${this.apiKey}&${params.toString()}`;
+    if (config.minSavings !== undefined || config.maxSavings !== undefined) {
+      const cutFilter = {
+        cut: {
+          min: config.minSavings ?? 0,
+          max: config.maxSavings ?? null,
+        },
+      };
+      params.append("filter", JSON.stringify(cutFilter));
+    }
 
-    console.log(`Fetching deals from ITAD...`);
+    const url = `${this.baseUrl}/deals/v2?key=${this.apiKey}&${params.toString()}`;
 
     try {
       const response = await fetch(url);
@@ -48,14 +77,22 @@ export class ITADApi {
 
       const data = (await response.json()) as {
         list?: ITADDeal[];
-        hasMore?: boolean;
-        nextOffset?: number;
       };
-      return data.list || [];
+      const list = data.list || [];
+
+      return {
+        list,
+        nextOffset: requestOffset + list.length,
+      };
     } catch (error) {
       console.error("Error fetching deals from ITAD:", error);
       throw error;
     }
+  }
+
+  async getDeals(config: ITADConfig): Promise<ITADDeal[]> {
+    const page = await this.fetchDealsPage(config);
+    return page.list;
   }
 
   async getShops(): Promise<Map<number, string>> {
@@ -84,11 +121,17 @@ export class ITADApi {
       return new Map();
     }
   }
+
   filterDeals(
     deals: ITADDeal[],
-    minSavings: number = 30,
-    maxSavings: number = 85,
+    criteria: DealFilterCriteria,
   ): ITADDeal[] {
+    const minSavings = criteria.minSavings;
+    const maxSavings = criteria.maxSavings;
+    const requiredDrmNames = criteria.requiredDrmNames ?? [];
+    const drmLabel =
+      requiredDrmNames.length > 0 ? requiredDrmNames.join(", ") : "none";
+
     console.log("\n--- FILTER DEBUG (ITADApi) ---");
 
     const step1 = deals.filter((deal) => deal.deal);
@@ -101,14 +144,12 @@ export class ITADApi {
     ]);
 
     const step3 = step2.filter((deal) => {
-      const cut = deal.deal.cut || 0;
-      return cut >= minSavings && cut <= maxSavings;
+      return savingsInRange(deal, minSavings, maxSavings);
     });
     console.log(
       `After savings filter (${minSavings}-${maxSavings}%): ${step3.length}`,
     );
 
-    // Debug: Show actual cut values from step2
     const cuts = step2.slice(0, 10).map((d) => `${d.title}: ${d.deal.cut}%`);
     console.log(`Sample cuts from step2:`, cuts);
     const cutValues = step2.map((d) => d.deal.cut || 0);
@@ -117,51 +158,19 @@ export class ITADApi {
     console.log(`Cut range: ${minCut}% to ${maxCut}%`);
 
     const step4 = step3.filter((deal) => {
-      return deal.deal.drm?.some((drmInfo) => drmInfo.name === "Steam");
+      return hasAnyDrmName(deal, requiredDrmNames);
     });
-    console.log(`After Steam DRM filter: ${step4.length}`);
+    console.log(`After DRM filter (${drmLabel}): ${step4.length}`);
     console.log(
       `Sample DRM arrays:`,
       step3.slice(0, 3).map((d) => `${d.title}: ${JSON.stringify(d.deal.drm)}`),
     );
     console.log("--- END FILTER DEBUG ---\n");
 
-    // Apply core filters (type, savings, Steam DRM) first
-    const baseFiltered = deals.filter((deal) => {
-      if (!deal.deal) return false;
+    const matchesDeal = createDealMatcher(criteria);
+    const finalFiltered = deals.filter(matchesDeal);
 
-      // Only accept games, not DLC
-      if (deal.type !== "game") return false;
-
-      // max the savings at 85% to avoid junk/shovelware games
-      const cut = deal.deal.cut || 0;
-      if (cut < minSavings || cut > maxSavings) return false;
-
-      const hasSteamDRM = deal.deal.drm?.some(
-        (drmInfo) => drmInfo.name === "Steam",
-      );
-      if (!hasSteamDRM) return false;
-
-      return true;
-    });
-
-    console.log(`After core filters: ${baseFiltered.length}`);
-
-    // exclude deals expiring within the next 48 hours
-    const now = Date.now();
-    const EXPIRY_WINDOW_MS = 48 * 60 * 60 * 1000;
-
-    const finalFiltered = baseFiltered.filter((deal) => {
-      const expiry = deal.deal?.expiry;
-      if (!expiry) return true;
-
-      const expiryTime = Date.parse(expiry);
-      if (isNaN(expiryTime)) return true;
-
-      return expiryTime - now > EXPIRY_WINDOW_MS;
-    });
-
-    console.log(`After expiry (>48h) filter: ${finalFiltered.length}`);
+    console.log(`After all filters: ${finalFiltered.length}`);
 
     return finalFiltered;
   }
@@ -256,7 +265,6 @@ export class ITADApi {
       });
     }
 
-    // Prefer boxart as thumbnail, fall back to banner or game image
     const assets = (deal as any).assets || {};
     const gameImage = (deal as any).game?.image;
     const boxart = assets.boxart;

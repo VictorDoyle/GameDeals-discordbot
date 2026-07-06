@@ -117,7 +117,9 @@ class ITADTestSuite {
       const deals = await this.api.getDeals({
         country: 'US',
         limit: 50,
-        shops: [61, 35, 37, 24, 29, 36, 49]
+        shops: [61, 35, 37, 24, 29, 36, 49],
+        minSavings: 30,
+        maxSavings: 85,
       });
 
       const minSavings = 30;
@@ -150,7 +152,11 @@ class ITADTestSuite {
 
       console.log('--- END DEBUG ---\n');
 
-      const filtered = this.api.filterDeals(deals, minSavings, maxSavings);
+      const filtered = this.api.filterDeals(deals, {
+        minSavings,
+        maxSavings,
+        requiredDrmNames: ['Steam'],
+      });
 
       console.log(`Deals after filtering: ${filtered.length}`);
 
