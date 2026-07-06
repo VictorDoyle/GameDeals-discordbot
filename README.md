@@ -78,7 +78,11 @@ Minimum Steam rating percentage (default: 70)
 
 ### DEAL_LIMIT
 
-Maximum deals to post per run (default: 50)
+Target number of deals to post per run (default: 50). The bot paginates through ITAD results until this count of new, filter-matching deals is collected, or the API is exhausted. Posts fewer on shortfall; never posts duplicates.
+
+### REQUIRED_DRM_NAMES
+
+Comma-separated DRM names a deal must have (default: `Steam`). Leave empty to disable DRM filtering.
 
 ### SHOP_IDS
 
@@ -94,12 +98,12 @@ Days to remember posted deals (default: 7)
 
 ## API Rate Limits
 
-ITAD API has reasonable rate limits for daily batch processing. Your configuration of 1 call per day fetching 50-100 deals is well within acceptable use.
+ITAD API has reasonable rate limits for daily batch processing. The bot fetches pages of up to 200 deals until the target count is met, with a short delay between pages.
 
 ## Why ITAD over CheapShark?
 
 - Built-in Steam rating and review count data
-- DRM filtering (Steam-only deals)
+- Configurable DRM filtering via `REQUIRED_DRM_NAMES`
 - More reliable historical low tracking
 - Better store coverage
 - More active development

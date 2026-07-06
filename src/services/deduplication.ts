@@ -82,16 +82,26 @@ export class DeduplicationService {
     return key in history.postedDeals;
   }
 
-  filterNewDeals<T extends { id: string; deal?: { shop: { id: number } } }>(deals: T[]): T[] {
+  private prepareHistory(): DealHistory {
     let history = this.loadHistory();
 
     if (this.shouldRotate(history)) {
       history = this.rotateHistory(history);
       this.saveHistory(history);
     } else {
-      // Always ensure the file exists, even if no rotation needed
       this.saveHistory(history);
     }
+
+    return history;
+  }
+
+  getPostedDealIds(): Set<string> {
+    const history = this.prepareHistory();
+    return new Set(Object.keys(history.postedDeals));
+  }
+
+  filterNewDeals<T extends { id: string; deal?: { shop: { id: number } } }>(deals: T[]): T[] {
+    const history = this.prepareHistory();
 
     return deals.filter(deal => {
       const key = this.getDealKey(deal);

@@ -1,5 +1,10 @@
 import { Client, GatewayIntentBits, TextChannel } from "discord.js";
 import dotenv from "dotenv";
+import { DealCollector } from "./services/dealCollector";
+import {
+  createDealMatcher,
+  parseDrmNamesFromEnv,
+} from "./services/dealFilters";
 import { ITADApi } from "./services/ITADApi";
 import { DeduplicationService } from "./services/deduplication";
 import { ITADConfig } from "./types";
@@ -23,7 +28,7 @@ const ITAD_API_KEY: string = process.env.ITAD_API_KEY;
 
 const DEAL_LIMIT = parseInt(process.env.DEAL_LIMIT || "10");
 const MIN_SAVINGS = parseInt(process.env.MIN_SAVINGS || "30");
-const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || "95");
+const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || "85");
 
 const COUNTRY = process.env.COUNTRY || "US";
 const DEDUPLICATION_DAYS = parseInt(process.env.DEDUPLICATION_DAYS || "5");
@@ -32,6 +37,10 @@ const TEST_MODE = process.env.TEST_MODE === "true";
 const SHOP_IDS = process.env.SHOP_IDS
   ? process.env.SHOP_IDS.split(",").map((id) => parseInt(id.trim()))
   : [61, 35, 6, 3];
+
+const REQUIRED_DRM_NAMES = parseDrmNamesFromEnv(
+  process.env.REQUIRED_DRM_NAMES ?? "Steam",
+);
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
@@ -58,12 +67,14 @@ async function postDeals() {
 
     const api = new ITADApi(ITAD_API_KEY);
 
-    const config: ITADConfig = {
+    const pageSize = 200;
+    const baseConfig: ITADConfig = {
       country: COUNTRY,
-      offset: 0,
-      limit: 200,
       sort: "-cut",
       shops: SHOP_IDS,
+      minSavings: MIN_SAVINGS,
+      maxSavings: MAX_SAVINGS,
+      limit: pageSize,
     };
 
     console.log("\n� Configuration:");
@@ -71,36 +82,72 @@ async function postDeals() {
     console.log(`   Shop IDs: ${SHOP_IDS.join(", ")}`);
     console.log(`   Min Savings: ${MIN_SAVINGS}%`);
     console.log(`   Max Savings: ${MAX_SAVINGS}%`);
-    console.log(`   Limit: ${DEAL_LIMIT}`);
-
-    console.log("\n�📡 Fetching deals from ITAD API...");
-    let allDeals = await api.getDeals(config);
-    console.log(`✓ Fetched ${allDeals.length} raw deals from ITAD`);
-
-    console.log("\n🔍 Applying filters...");
-    let filteredDeals = api.filterDeals(allDeals, MIN_SAVINGS, MAX_SAVINGS);
-    console.log(`✓ ${filteredDeals.length} deals after filtering`);
-
-    // First filter out deals based on history, then enforce the per-run limit
-    console.log("\n🔄 Checking for duplicates...");
-    let newDeals = deduplicationService.filterNewDeals(filteredDeals);
-    console.log(`✓ ${newDeals.length} new deals after deduplication`);
-    console.log(`   - Original filtered deals: ${filteredDeals.length}`);
+    console.log(`   Target deals: ${DEAL_LIMIT}`);
     console.log(
-      `   - Duplicate deals filtered out: ${filteredDeals.length - newDeals.length}`,
+      `   Required DRM: ${REQUIRED_DRM_NAMES.length > 0 ? REQUIRED_DRM_NAMES.join(", ") : "any"}`,
     );
 
-    // Take up to the configured limit of new deals to post
-    newDeals = newDeals.slice(0, DEAL_LIMIT);
+    const dealMatcher = createDealMatcher({
+      minSavings: MIN_SAVINGS,
+      maxSavings: MAX_SAVINGS,
+      requiredDrmNames: REQUIRED_DRM_NAMES,
+    });
+
+    console.log("\n📡 Scanning ITAD pages for matching deals...");
+    const postedIds = deduplicationService.getPostedDealIds();
+    const collector = new DealCollector(DEAL_LIMIT, postedIds, dealMatcher);
+
+    let offset = 0;
+    let pageNumber = 0;
+
+    while (collector.needsMore) {
+      if (pageNumber > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
+      const page = await api.fetchDealsPage({ ...baseConfig, offset });
+      pageNumber++;
+
+      if (page.list.length === 0) {
+        console.log(`Page ${pageNumber}: empty response at offset ${offset}`);
+        break;
+      }
+
+      for (const deal of page.list) {
+        collector.accept(deal);
+        if (!collector.needsMore) {
+          break;
+        }
+      }
+
+      const pageStats = collector.stats;
+      console.log(
+        `Page ${pageNumber}: scanned ${page.list.length} deals at offset ${offset} (accepted ${pageStats.accepted}/${DEAL_LIMIT})`,
+      );
+
+      offset = page.nextOffset;
+    }
+
+    const newDeals = collector.results;
+    const collectStats = collector.stats;
+
+    console.log(`\n✓ Collection complete`);
+    console.log(`   - ITAD results scanned: ${offset}`);
+    console.log(`   - Accepted: ${collectStats.accepted}`);
+    console.log(`   - Skipped (already posted): ${collectStats.skippedPosted}`);
+    console.log(`   - Skipped (filters): ${collectStats.skippedFilter}`);
+    console.log(`   - Skipped (duplicate in run): ${collectStats.skippedDuplicate}`);
+
+    if (newDeals.length < DEAL_LIMIT) {
+      console.warn(
+        `Found ${newDeals.length}/${DEAL_LIMIT} new deals after scanning ${offset} ITAD results`,
+      );
+    }
 
     if (newDeals.length === 0) {
       console.log("\n No new deals found matching criteria");
 
-      // Still save the deal history to ensure file exists for git
-      if (filteredDeals.length > 0) {
-        console.log("💾 Updating deal history with existing deals...");
-        deduplicationService.markDealsAsPosted([]);
-      }
+      deduplicationService.markDealsAsPosted([]);
 
       if (!TEST_MODE) {
         const channel = (await client.channels.fetch(

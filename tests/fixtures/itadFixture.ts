@@ -20,6 +20,12 @@ let cachedDeals: ITADDeal[] | null = null;
 export async function getCachedDeals(): Promise<ITADDeal[]> {
   if (cachedDeals) return cachedDeals;
   // single live API call for the whole test run
-  cachedDeals = await api.getDeals({ country: 'US', limit: 50, shops: shopIds });
+  cachedDeals = await api.getDeals({
+    country: 'US',
+    limit: 50,
+    shops: shopIds,
+    minSavings: 30,
+    maxSavings: 85,
+  });
   return cachedDeals;
 }

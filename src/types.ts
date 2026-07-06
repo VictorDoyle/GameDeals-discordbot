@@ -69,6 +69,13 @@ export interface ITADConfig {
   limit?: number;
   sort?: string;
   shops?: number[];
+  minSavings?: number;
+  maxSavings?: number;
+}
+
+export interface ITADDealsResponse {
+  list: ITADDeal[];
+  nextOffset: number;
 }
 
 export interface ITADGameInfo {

@@ -8,8 +8,13 @@ describe('Filtering logic', () => {
     const deals = await getCachedDeals();
     const minSavings = 30;
     const maxSavings = 85;
+    const filterCriteria = {
+      minSavings,
+      maxSavings,
+      requiredDrmNames: ["Steam"],
+    };
 
-    const filtered = api.filterDeals(deals, minSavings, maxSavings);
+    const filtered = api.filterDeals(deals, filterCriteria);
 
     // Expiry check (>48h) if present
     const now = Date.now();
