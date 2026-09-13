@@ -6,7 +6,10 @@ import {
 } from "../src/services/dealFilters";
 import type { ITADDeal } from "../src/types";
 
-function makeDeal(drm: Array<{ id: number; name: string }>): ITADDeal {
+function makeDeal(
+  drm: Array<{ id: number; name: string }> = [{ id: 1, name: "Steam" }],
+  extras: { expiry?: string | null; reviews?: ITADDeal["reviews"] } = {},
+): ITADDeal {
   return {
     id: "deal-1",
     slug: "test-game",
@@ -26,10 +29,15 @@ function makeDeal(drm: Array<{ id: number; name: string }>): ITADDeal {
       drm,
       platforms: [{ id: 1, name: "Windows" }],
       timestamp: "2024-01-01T00:00:00+01:00",
-      expiry: null,
+      expiry: extras.expiry ?? null,
       url: "https://example.com",
     },
+    reviews: extras.reviews,
   };
+}
+
+function expiryInHours(hours: number): string {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
 describe("dealFilters", () => {
@@ -88,5 +96,75 @@ describe("dealFilters", () => {
     expect(parseDrmNamesFromEnv("Steam, GOG")).toEqual(["Steam", "GOG"]);
     expect(parseDrmNamesFromEnv("")).toEqual([]);
     expect(parseDrmNamesFromEnv(undefined)).toEqual([]);
+  });
+
+  test("expiresAfterWindow allows missing expiry", () => {
+    const matcher = createDealMatcher({
+      minSavings: 30,
+      maxSavings: 85,
+      minHoursUntilExpiry: 48,
+    });
+    expect(matcher(makeDeal())).toBe(true);
+  });
+
+  test("MIN_HOURS_UNTIL_EXPIRY=0 allows a deal that expires in 1h", () => {
+    const matcher = createDealMatcher({
+      minSavings: 30,
+      maxSavings: 85,
+      minHoursUntilExpiry: 0,
+    });
+    expect(
+      matcher(
+        makeDeal([{ id: 1, name: "Steam" }], { expiry: expiryInHours(1) }),
+      ),
+    ).toBe(true);
+  });
+
+  test("48h window rejects a deal that expires in 1h", () => {
+    const matcher = createDealMatcher({
+      minSavings: 30,
+      maxSavings: 85,
+      minHoursUntilExpiry: 48,
+    });
+    expect(
+      matcher(
+        makeDeal([{ id: 1, name: "Steam" }], { expiry: expiryInHours(1) }),
+      ),
+    ).toBe(false);
+  });
+
+  test("rating 90 / 10k reviews passes MIN_RATING 70 and MIN_REVIEW_COUNT 100", () => {
+    const matcher = createDealMatcher({
+      minSavings: 30,
+      maxSavings: 85,
+      minRating: 70,
+      minReviewCount: 100,
+    });
+    const deal = makeDeal([{ id: 1, name: "Steam" }], {
+      reviews: [{ source: "Steam", score: 90, count: 10_000 }],
+    });
+    expect(matcher(deal)).toBe(true);
+  });
+
+  test("rating 10 fails MIN_RATING 70", () => {
+    const matcher = createDealMatcher({
+      minSavings: 30,
+      maxSavings: 85,
+      minRating: 70,
+      minReviewCount: 100,
+    });
+    const deal = makeDeal([{ id: 1, name: "Steam" }], {
+      reviews: [{ source: "Steam", score: 10, count: 10_000 }],
+    });
+    expect(matcher(deal)).toBe(false);
+  });
+
+  test("missing reviews fail when a min rating is set", () => {
+    const matcher = createDealMatcher({
+      minSavings: 30,
+      maxSavings: 85,
+      minRating: 70,
+    });
+    expect(matcher(makeDeal())).toBe(false);
   });
 });

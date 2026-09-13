@@ -42,17 +42,55 @@ SHOP_IDS=61,35,6,3
 
 ### 3. Store IDs Reference
 
+`SHOP_IDS` is a comma-separated list of ITAD shop IDs. Default: `61,35,6,36` (Steam, GOG, Fanatical, GreenManGaming).
 According to [ITAD API documentation](https://docs.isthereanydeal.com/), common store IDs:
 
 - **61** - Steam
 - **35** - GOG
 - **6** - Fanatical
-- **3** - GreenManGaming
+- **36** - GreenManGaming
 - **11** - Humble Store
 - **13** - GamersGate
 - **25** - Epic Games Store
 
-You can fetch all available stores using the `/service/shops/v1` endpoint.
+You can fetch all available stores using the `/service/shops/v1` endpoint/from [GET /service/shops/v1](https://docs.isthereanydeal.com/) but below is a list for quick reference:
+
+| ID | Store |
+|---:|---|
+| 2 | AllYouPlay |
+| 4 | Blizzard |
+| 6 | Fanatical |
+| 13 | DLGamer |
+| 15 | Dreamgame |
+| 16 | Epic Game Store |
+| 17 | FireFlower |
+| 20 | GameBillet |
+| 24 | GamersGate |
+| 25 | Gamesload |
+| 26 | GamesPlanet UK |
+| 27 | GamesPlanet DE |
+| 28 | GamesPlanet FR |
+| 29 | GamesPlanet US |
+| 35 | GOG |
+| 36 | GreenManGaming |
+| 37 | Humble Store |
+| 42 | IndieGala Store |
+| 47 | MacGameStore |
+| 48 | Microsoft Store |
+| 49 | Newegg |
+| 50 | Nuuvem |
+| 52 | EA Store |
+| 61 | Steam |
+| 62 | Ubisoft Store |
+| 64 | WinGameStore |
+| 65 | JoyBuggy |
+| 70 | Playsum |
+| 72 | ZOOM Platform |
+| 73 | PlanetPlay |
+| 74 | PlayerLand |
+| 75 | Fortuna Digital |
+| 77 | Muve |
+| 78 | Zapagames |
 
 ### 4. Install and Run
 
@@ -68,13 +106,21 @@ yarn start
 
 Minimum discount percentage (default: 30)
 
-### MIN_REVIEW_COUNT
+### MAX_SAVINGS
 
-Minimum number of Steam reviews (default: 100)
+Maximum discount percentage (default: 85)
 
 ### MIN_RATING
 
-Minimum Steam rating percentage (default: 70)
+Minimum Steam rating percentage (default: 70). Applied after `/games/info/v2` enrichment. Set to `0` to disable. Missing Steam reviews fail this filter when it is enabled.
+
+### MIN_REVIEW_COUNT
+
+Minimum number of Steam reviews (default: 100). Same enrichment path as `MIN_RATING`. Set to `0` to disable.
+
+### MIN_HOURS_UNTIL_EXPIRY
+
+Drop deals that expire sooner than this many hours (default: 48). `0` still rejects already-expired deals, but allows anything still live.
 
 ### DEAL_LIMIT
 
@@ -95,6 +141,8 @@ ISO 3166-1 alpha-2 country code for pricing (default: US)
 ### DEDUPLICATION_DAYS
 
 Days to remember posted deals (default: 7)
+
+Invalid integer env values (for example: `DEAL_LIMIT=foo-bar`) will abort at startup with a message.
 
 ## API Rate Limits
 

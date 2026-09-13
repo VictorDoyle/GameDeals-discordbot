@@ -1,9 +1,9 @@
-import { getCachedDeals, api } from '../fixtures/itadFixture';
+import { api, describeLive, getCachedDeals } from "../fixtures/itadFixture";
 
-describe('Sanitization / escaping', () => {
+describeLive("Sanitization / escaping", () => {
   jest.setTimeout(20000);
 
-  test('formatted message and embed avoid raw mentions and mass-ping tokens', async () => {
+  test("formatted message and embed avoid raw mentions and mass-ping tokens", async () => {
     const deals = await getCachedDeals();
     expect(deals.length).toBeGreaterThan(0);
 
@@ -20,8 +20,8 @@ describe('Sanitization / escaping', () => {
     const embed = api.formatDealEmbed(deal as any);
     const json = (embed as any).toJSON ? (embed as any).toJSON() : embed;
 
-    const title = String(json.title || '');
-    const desc = String(json.description || '');
+    const title = String(json.title || "");
+    const desc = String(json.description || "");
 
     expect(title).not.toMatch(/@everyone/);
     expect(title).not.toMatch(/@here/);

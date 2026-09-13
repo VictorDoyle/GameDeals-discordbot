@@ -1,13 +1,15 @@
 import { Client, GatewayIntentBits, TextChannel } from "discord.js";
 import dotenv from "dotenv";
+import { parseIntegerEnv, parseShopIds } from "./env";
+import { sendDealBatches } from "./posting";
 import { DealCollector } from "./services/dealCollector";
 import {
   createDealMatcher,
   parseDrmNamesFromEnv,
 } from "./services/dealFilters";
-import { ITADApi } from "./services/ITADApi";
 import { DeduplicationService } from "./services/deduplication";
-import { ITADConfig } from "./types";
+import { GAME_INFO_BUDGET, ITADApi } from "./services/ITADApi";
+import { ITADConfig, ITADDeal } from "./types";
 
 dotenv.config();
 
@@ -26,17 +28,56 @@ const DISCORD_TOKEN: string = process.env.DISCORD_TOKEN;
 const CHANNEL_ID: string = process.env.DISCORD_CHANNEL_ID;
 const ITAD_API_KEY: string = process.env.ITAD_API_KEY;
 
-const DEAL_LIMIT = parseInt(process.env.DEAL_LIMIT || "10");
-const MIN_SAVINGS = parseInt(process.env.MIN_SAVINGS || "30");
-const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || "85");
+let DEAL_LIMIT: number;
+let MIN_SAVINGS: number;
+let MAX_SAVINGS: number;
+let DEDUPLICATION_DAYS: number;
+let SHOP_IDS: number[];
+let MIN_HOURS_UNTIL_EXPIRY: number;
+let MIN_RATING: number;
+let MIN_REVIEW_COUNT: number;
+
+try {
+  DEAL_LIMIT = parseIntegerEnv("DEAL_LIMIT", process.env.DEAL_LIMIT, 50, 1);
+  MIN_SAVINGS = parseIntegerEnv("MIN_SAVINGS", process.env.MIN_SAVINGS, 30, 0);
+  MAX_SAVINGS = parseIntegerEnv("MAX_SAVINGS", process.env.MAX_SAVINGS, 85, 0);
+  DEDUPLICATION_DAYS = parseIntegerEnv(
+    "DEDUPLICATION_DAYS",
+    process.env.DEDUPLICATION_DAYS,
+    7,
+    1,
+  );
+  MIN_HOURS_UNTIL_EXPIRY = parseIntegerEnv(
+    "MIN_HOURS_UNTIL_EXPIRY",
+    process.env.MIN_HOURS_UNTIL_EXPIRY,
+    48,
+    0,
+  );
+  MIN_RATING = parseIntegerEnv("MIN_RATING", process.env.MIN_RATING, 70, 0);
+  MIN_REVIEW_COUNT = parseIntegerEnv(
+    "MIN_REVIEW_COUNT",
+    process.env.MIN_REVIEW_COUNT,
+    100,
+    0,
+  );
+  SHOP_IDS = parseShopIds(process.env.SHOP_IDS);
+  if (MIN_SAVINGS > MAX_SAVINGS) {
+    throw new Error(
+      `MIN_SAVINGS (${MIN_SAVINGS}) must be <= MAX_SAVINGS (${MAX_SAVINGS})`,
+    );
+  }
+  if (MIN_RATING > 100) {
+    throw new Error(
+      `MIN_RATING must be an integer >= 0, got ${JSON.stringify(process.env.MIN_RATING)}`,
+    );
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
 
 const COUNTRY = process.env.COUNTRY || "US";
-const DEDUPLICATION_DAYS = parseInt(process.env.DEDUPLICATION_DAYS || "5");
 const TEST_MODE = process.env.TEST_MODE === "true";
-
-const SHOP_IDS = process.env.SHOP_IDS
-  ? process.env.SHOP_IDS.split(",").map((id) => parseInt(id.trim()))
-  : [61, 35, 6, 3];
 
 const REQUIRED_DRM_NAMES = parseDrmNamesFromEnv(
   process.env.REQUIRED_DRM_NAMES ?? "Steam",
@@ -86,16 +127,27 @@ async function postDeals() {
     console.log(
       `   Required DRM: ${REQUIRED_DRM_NAMES.length > 0 ? REQUIRED_DRM_NAMES.join(", ") : "any"}`,
     );
+    console.log(`   Min hours until expiry: ${MIN_HOURS_UNTIL_EXPIRY}`);
+    console.log(`   Min rating: ${MIN_RATING}`);
+    console.log(`   Min review count: ${MIN_REVIEW_COUNT}`);
 
-    const dealMatcher = createDealMatcher({
+    const collectMatcher = createDealMatcher({
       minSavings: MIN_SAVINGS,
       maxSavings: MAX_SAVINGS,
       requiredDrmNames: REQUIRED_DRM_NAMES,
+      minHoursUntilExpiry: MIN_HOURS_UNTIL_EXPIRY,
     });
+
+    const ratingFiltersOn = MIN_RATING > 0 || MIN_REVIEW_COUNT > 0;
+    const collectTarget = ratingFiltersOn ? GAME_INFO_BUDGET : DEAL_LIMIT;
 
     console.log("\n📡 Scanning ITAD pages for matching deals...");
     const postedIds = deduplicationService.getPostedDealIds();
-    const collector = new DealCollector(DEAL_LIMIT, postedIds, dealMatcher);
+    const collector = new DealCollector(
+      collectTarget,
+      postedIds,
+      collectMatcher,
+    );
 
     let offset = 0;
     let pageNumber = 0;
@@ -122,13 +174,13 @@ async function postDeals() {
 
       const pageStats = collector.stats;
       console.log(
-        `Page ${pageNumber}: scanned ${page.list.length} deals at offset ${offset} (accepted ${pageStats.accepted}/${DEAL_LIMIT})`,
+        `Page ${pageNumber}: scanned ${page.list.length} deals at offset ${offset} (accepted ${pageStats.accepted}/${collectTarget})`,
       );
 
       offset = page.nextOffset;
     }
 
-    const newDeals = collector.results;
+    let newDeals: ITADDeal[] = collector.results;
     const collectStats = collector.stats;
 
     console.log(`\n✓ Collection complete`);
@@ -136,7 +188,27 @@ async function postDeals() {
     console.log(`   - Accepted: ${collectStats.accepted}`);
     console.log(`   - Skipped (already posted): ${collectStats.skippedPosted}`);
     console.log(`   - Skipped (filters): ${collectStats.skippedFilter}`);
-    console.log(`   - Skipped (duplicate in run): ${collectStats.skippedDuplicate}`);
+    console.log(
+      `   - Skipped (duplicate in run): ${collectStats.skippedDuplicate}`,
+    );
+
+    if (ratingFiltersOn) {
+      const enriched = await api.enrichDeals(newDeals, GAME_INFO_BUDGET);
+      const skippedUnenriched = newDeals.length - enriched.length;
+      const postMatcher = createDealMatcher({
+        minSavings: MIN_SAVINGS,
+        maxSavings: MAX_SAVINGS,
+        requiredDrmNames: REQUIRED_DRM_NAMES,
+        minHoursUntilExpiry: MIN_HOURS_UNTIL_EXPIRY,
+        minRating: MIN_RATING,
+        minReviewCount: MIN_REVIEW_COUNT,
+      });
+      newDeals = enriched.filter(postMatcher).slice(0, DEAL_LIMIT);
+      console.log(
+        `   - Enrichment: ${enriched.length} of ${collector.results.length} (skipped ${skippedUnenriched} over budget)`,
+      );
+      console.log(`   - After rating/review filters: ${newDeals.length}`);
+    }
 
     if (newDeals.length < DEAL_LIMIT) {
       console.warn(
@@ -146,17 +218,7 @@ async function postDeals() {
 
     if (newDeals.length === 0) {
       console.log("\n No new deals found matching criteria");
-
       deduplicationService.markDealsAsPosted([]);
-
-      if (!TEST_MODE) {
-        const channel = (await client.channels.fetch(
-          CHANNEL_ID,
-        )) as TextChannel;
-        await channel.send(
-          "No new game deals found today matching your filters.",
-        );
-      }
       return;
     }
 
@@ -195,20 +257,18 @@ async function postDeals() {
     console.log("\n Posting to Discord...");
     const channel = (await client.channels.fetch(CHANNEL_ID)) as TextChannel;
 
-    // Convert deals to embeds and send in batches (max 10 embeds per message)
-    const embeds = newDeals.map((d) => api.formatDealEmbed(d));
-
-    const BATCH = 10;
-    for (let i = 0; i < embeds.length; i += BATCH) {
-      const batch = embeds.slice(i, i + BATCH);
-      await channel.send({ embeds: batch as any });
-      console.log(
-        `Posted embeds ${i + 1}-${Math.min(i + BATCH, embeds.length)}`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    deduplicationService.markDealsAsPosted(newDeals);
+    await sendDealBatches(
+      newDeals,
+      async (batch) => {
+        await channel.send({
+          embeds: batch.map((deal) => api.formatDealEmbed(deal)),
+        });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      },
+      (batch) => {
+        deduplicationService.markDealsAsPosted(batch);
+      },
+    );
 
     console.log("\n" + "=".repeat(60));
     console.log(" All deals posted successfully");
