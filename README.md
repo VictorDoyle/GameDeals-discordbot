@@ -68,6 +68,10 @@ yarn start
 
 Minimum discount percentage (default: 30)
 
+### MAX_SAVINGS
+
+Maximum discount percentage (default: 85)
+
 ### MIN_REVIEW_COUNT
 
 Minimum number of Steam reviews (default: 100)
@@ -95,6 +99,8 @@ ISO 3166-1 alpha-2 country code for pricing (default: US)
 ### DEDUPLICATION_DAYS
 
 Days to remember posted deals (default: 7)
+
+Invalid integer env values (for example: `DEAL_LIMIT=foo-bar`) will abort at startup with a message.
 
 ## API Rate Limits
 

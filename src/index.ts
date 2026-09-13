@@ -1,12 +1,13 @@
 import { Client, GatewayIntentBits, TextChannel } from "discord.js";
 import dotenv from "dotenv";
+import { parseIntegerEnv, parseShopIds } from "./env";
 import { DealCollector } from "./services/dealCollector";
 import {
   createDealMatcher,
   parseDrmNamesFromEnv,
 } from "./services/dealFilters";
-import { ITADApi } from "./services/ITADApi";
 import { DeduplicationService } from "./services/deduplication";
+import { ITADApi } from "./services/ITADApi";
 import { ITADConfig } from "./types";
 
 dotenv.config();
@@ -26,17 +27,35 @@ const DISCORD_TOKEN: string = process.env.DISCORD_TOKEN;
 const CHANNEL_ID: string = process.env.DISCORD_CHANNEL_ID;
 const ITAD_API_KEY: string = process.env.ITAD_API_KEY;
 
-const DEAL_LIMIT = parseInt(process.env.DEAL_LIMIT || "10");
-const MIN_SAVINGS = parseInt(process.env.MIN_SAVINGS || "30");
-const MAX_SAVINGS = parseInt(process.env.MAX_SAVINGS || "85");
+let DEAL_LIMIT: number;
+let MIN_SAVINGS: number;
+let MAX_SAVINGS: number;
+let DEDUPLICATION_DAYS: number;
+let SHOP_IDS: number[];
+
+try {
+  DEAL_LIMIT = parseIntegerEnv("DEAL_LIMIT", process.env.DEAL_LIMIT, 50, 1);
+  MIN_SAVINGS = parseIntegerEnv("MIN_SAVINGS", process.env.MIN_SAVINGS, 30, 0);
+  MAX_SAVINGS = parseIntegerEnv("MAX_SAVINGS", process.env.MAX_SAVINGS, 85, 0);
+  DEDUPLICATION_DAYS = parseIntegerEnv(
+    "DEDUPLICATION_DAYS",
+    process.env.DEDUPLICATION_DAYS,
+    7,
+    1,
+  );
+  SHOP_IDS = parseShopIds(process.env.SHOP_IDS);
+  if (MIN_SAVINGS > MAX_SAVINGS) {
+    throw new Error(
+      `MIN_SAVINGS (${MIN_SAVINGS}) must be <= MAX_SAVINGS (${MAX_SAVINGS})`,
+    );
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
 
 const COUNTRY = process.env.COUNTRY || "US";
-const DEDUPLICATION_DAYS = parseInt(process.env.DEDUPLICATION_DAYS || "5");
 const TEST_MODE = process.env.TEST_MODE === "true";
-
-const SHOP_IDS = process.env.SHOP_IDS
-  ? process.env.SHOP_IDS.split(",").map((id) => parseInt(id.trim()))
-  : [61, 35, 6, 3];
 
 const REQUIRED_DRM_NAMES = parseDrmNamesFromEnv(
   process.env.REQUIRED_DRM_NAMES ?? "Steam",
@@ -136,7 +155,9 @@ async function postDeals() {
     console.log(`   - Accepted: ${collectStats.accepted}`);
     console.log(`   - Skipped (already posted): ${collectStats.skippedPosted}`);
     console.log(`   - Skipped (filters): ${collectStats.skippedFilter}`);
-    console.log(`   - Skipped (duplicate in run): ${collectStats.skippedDuplicate}`);
+    console.log(
+      `   - Skipped (duplicate in run): ${collectStats.skippedDuplicate}`,
+    );
 
     if (newDeals.length < DEAL_LIMIT) {
       console.warn(

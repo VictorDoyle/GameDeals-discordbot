@@ -27,8 +27,11 @@ describe("fetchDealsPage cut filter", () => {
     });
 
     expect(capturedUrl).toContain("filter=");
-    const filterParam = new URL(capturedUrl).searchParams.get("filter");
-    expect(filterParam).toBe(JSON.stringify({ cut: { min: 30, max: 85 } }));
+    const parsed = new URL(capturedUrl);
+    expect(parsed.searchParams.get("filter")).toBe(
+      JSON.stringify({ cut: { min: 30, max: 85 } }),
+    );
+    expect(parsed.searchParams.get("key")).toBeNull();
   });
 
   test("omits cut filter when savings bounds not provided", async () => {
@@ -59,7 +62,11 @@ describe("fetchDealsPage cut filter", () => {
     });
 
     const api = new ITADApi("test-api-key");
-    const page = await api.fetchDealsPage({ country: "US", offset: 100, limit: 10 });
+    const page = await api.fetchDealsPage({
+      country: "US",
+      offset: 100,
+      limit: 10,
+    });
 
     expect(page.list).toHaveLength(2);
     expect(page.nextOffset).toBe(102);

@@ -7,10 +7,6 @@ import {
   savingsInRange,
 } from "./dealFilters";
 
-export type {
-  DealFilterCriteria,
-  DealPredicate,
-} from "./dealFilters";
 export {
   createDealMatcher,
   expiresAfterWindow,
@@ -20,6 +16,55 @@ export {
   parseDrmNamesFromEnv,
   savingsInRange,
 } from "./dealFilters";
+export type { DealFilterCriteria, DealPredicate } from "./dealFilters";
+
+const REQUEST_TIMEOUT_MS = 15_000;
+const MAX_ATTEMPTS = 4;
+const BASE_DELAY_MS = 500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "TypeError")
+  );
+}
+
+function delayFor(response: Response | undefined, attempt: number): number {
+  const raw = response?.headers.get("Retry-After");
+  if (raw != null) {
+    const seconds = Number.parseInt(raw, 10);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return seconds * 1000;
+    }
+  }
+
+  const exp = BASE_DELAY_MS * 2 ** (attempt - 1);
+  return Math.round(exp * (0.5 + Math.random() / 2));
+}
+
+async function itadErrorMessage(response: Response): Promise<string> {
+  let errorMessage = `ITAD API request failed: ${response.status}`;
+  try {
+    const errorBody = (await response.json()) as {
+      status_code?: number;
+      reason_phrase?: string;
+    };
+    if (errorBody.status_code !== undefined && errorBody.reason_phrase) {
+      errorMessage = `ITAD API request failed: ${errorBody.status_code} ${errorBody.reason_phrase}`;
+    }
+  } catch {
+    // keep the status-only message
+  }
+  return errorMessage;
+}
 
 export class ITADApi {
   private baseUrl: string = "https://api.isthereanydeal.com";
@@ -27,6 +72,55 @@ export class ITADApi {
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+  }
+
+  private async requestJson(url: string): Promise<unknown> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch(url, {
+          headers: { "ITAD-API-Key": this.apiKey },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errorMessage = await itadErrorMessage(response);
+          if (isRetryableStatus(response.status) && attempt < MAX_ATTEMPTS) {
+            lastError = new Error(errorMessage);
+            await sleep(delayFor(response, attempt));
+            continue;
+          }
+          throw new Error(errorMessage);
+        }
+
+        try {
+          return await response.json();
+        } catch {
+          throw new Error("ITAD API returned invalid JSON");
+        }
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error.message === "ITAD API returned invalid JSON" ||
+            error.message.startsWith("ITAD API request failed:"))
+        ) {
+          throw error;
+        }
+        lastError = error;
+        if (attempt < MAX_ATTEMPTS && isRetryableNetworkError(error)) {
+          await sleep(delayFor(undefined, attempt));
+          continue;
+        }
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    throw lastError;
   }
 
   async fetchDealsPage(config: ITADConfig): Promise<ITADDealsResponse> {
@@ -54,40 +148,14 @@ export class ITADApi {
       params.append("filter", JSON.stringify(cutFilter));
     }
 
-    const url = `${this.baseUrl}/deals/v2?key=${this.apiKey}&${params.toString()}`;
+    const url = `${this.baseUrl}/deals/v2?${params.toString()}`;
+    const data = (await this.requestJson(url)) as { list?: ITADDeal[] };
+    const list = data.list || [];
 
-    try {
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        let errorMessage = `ITAD API request failed: ${response.status}`;
-        try {
-          const errorBody = (await response.json()) as {
-            status_code?: number;
-            reason_phrase?: string;
-          };
-          if (errorBody.status_code !== undefined && errorBody.reason_phrase) {
-            errorMessage = `ITAD API request failed: ${errorBody.status_code} ${errorBody.reason_phrase}`;
-          }
-        } catch (error) {
-          console.debug("Response was not expected JSON format", error);
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = (await response.json()) as {
-        list?: ITADDeal[];
-      };
-      const list = data.list || [];
-
-      return {
-        list,
-        nextOffset: requestOffset + list.length,
-      };
-    } catch (error) {
-      console.error("Error fetching deals from ITAD:", error);
-      throw error;
-    }
+    return {
+      list,
+      nextOffset: requestOffset + list.length,
+    };
   }
 
   async getDeals(config: ITADConfig): Promise<ITADDeal[]> {
@@ -99,13 +167,7 @@ export class ITADApi {
     const url = `${this.baseUrl}/service/shops/v1`;
 
     try {
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch shops: ${response.status}`);
-      }
-
-      const shops = (await response.json()) as Array<{
+      const shops = (await this.requestJson(url)) as Array<{
         id: number;
         title: string;
       }>;
@@ -122,10 +184,7 @@ export class ITADApi {
     }
   }
 
-  filterDeals(
-    deals: ITADDeal[],
-    criteria: DealFilterCriteria,
-  ): ITADDeal[] {
+  filterDeals(deals: ITADDeal[], criteria: DealFilterCriteria): ITADDeal[] {
     const minSavings = criteria.minSavings;
     const maxSavings = criteria.maxSavings;
     const requiredDrmNames = criteria.requiredDrmNames ?? [];
@@ -180,13 +239,9 @@ export class ITADApi {
 
     for (const gameId of gameIds.slice(0, 10)) {
       try {
-        const url = `${this.baseUrl}/games/info/v2?key=${this.apiKey}&id=${gameId}`;
-        const response = await fetch(url);
-
-        if (response.ok) {
-          const info = await response.json();
-          gameInfoMap.set(gameId, info);
-        }
+        const url = `${this.baseUrl}/games/info/v2?id=${encodeURIComponent(gameId)}`;
+        const info = await this.requestJson(url);
+        gameInfoMap.set(gameId, info);
 
         await new Promise((resolve) => setTimeout(resolve, 200));
       } catch (error) {
