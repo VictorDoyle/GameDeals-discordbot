@@ -1,10 +1,10 @@
-import { getCachedDeals, api } from './fixtures/itadFixture';
-import type { ITADDeal } from '../src/types';
+import type { ITADDeal } from "../src/types";
+import { api, describeLive, getCachedDeals } from "./fixtures/itadFixture";
 
-describe('Embed formatting', () => {
+describeLive("Embed formatting", () => {
   jest.setTimeout(30000);
 
-  test('formatDealEmbed returns embed with expected structure and images (uses cached data)', async () => {
+  test("formatDealEmbed returns embed with expected structure and images (uses cached data)", async () => {
     const deals = await getCachedDeals();
     expect(deals.length).toBeGreaterThan(0);
 
@@ -26,12 +26,12 @@ describe('Embed formatting', () => {
     expect(json.url).toBe(deal.deal.url);
 
     const fieldNames = (json.fields || []).map((f: any) => f.name);
-    const required = ['Price', 'Discount', 'Store'];
+    const required = ["Price", "Discount", "Store"];
     for (const r of required) expect(fieldNames).toContain(r);
 
-    if (deal.deal.flag === 'H') {
-      const desc = json.description || '';
-      expect(String(desc).toLowerCase()).toContain('historical low');
+    if (deal.deal.flag === "H") {
+      const desc = json.description || "";
+      expect(String(desc).toLowerCase()).toContain("historical low");
     }
 
     // Image checks (best-effort, depending on available assets)
@@ -44,11 +44,17 @@ describe('Embed formatting', () => {
     const hasImage = !!json.image?.url;
 
     if (boxart) {
-      expect(hasThumbnail && String(json.thumbnail?.url || '').includes(boxart)).toBeTruthy();
+      expect(
+        hasThumbnail && String(json.thumbnail?.url || "").includes(boxart),
+      ).toBeTruthy();
     } else if (banner600) {
-      expect(hasImage && String(json.image?.url || '').includes(banner600)).toBeTruthy();
+      expect(
+        hasImage && String(json.image?.url || "").includes(banner600),
+      ).toBeTruthy();
     } else if (gameImage) {
-      expect(hasThumbnail && String(json.thumbnail?.url || '').includes(gameImage)).toBeTruthy();
+      expect(
+        hasThumbnail && String(json.thumbnail?.url || "").includes(gameImage),
+      ).toBeTruthy();
     }
   });
 });

@@ -1,10 +1,9 @@
-import { getCachedDeals, api } from './fixtures/itadFixture';
-import type { ITADDeal } from '../src/types';
+import { api, describeLive, getCachedDeals } from "./fixtures/itadFixture";
 
-describe('Filtering logic', () => {
+describeLive("Filtering logic", () => {
   jest.setTimeout(30000);
 
-  test('filterDeals enforces savings and Steam DRM and expiry window (uses cached data)', async () => {
+  test("filterDeals enforces savings and Steam DRM and expiry window (uses cached data)", async () => {
     const deals = await getCachedDeals();
     const minSavings = 30;
     const maxSavings = 85;
@@ -22,7 +21,9 @@ describe('Filtering logic', () => {
     for (const d of filtered) {
       if (d.deal.expiry) {
         const expiryTime = Date.parse(d.deal.expiry);
-        expect(isNaN(expiryTime) || (expiryTime - now) > EXPIRY_WINDOW_MS).toBeTruthy();
+        expect(
+          isNaN(expiryTime) || expiryTime - now > EXPIRY_WINDOW_MS,
+        ).toBeTruthy();
       }
     }
 
@@ -35,7 +36,7 @@ describe('Filtering logic', () => {
     for (const d of filtered) {
       expect(d.deal.cut).toBeGreaterThanOrEqual(minSavings);
       expect(d.deal.cut).toBeLessThanOrEqual(maxSavings);
-      const hasSteam = d.deal.drm?.some((info: any) => info.name === 'Steam');
+      const hasSteam = d.deal.drm?.some((info: any) => info.name === "Steam");
       expect(hasSteam).toBeTruthy();
     }
   });
