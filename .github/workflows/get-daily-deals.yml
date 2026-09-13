@@ -6,6 +6,10 @@ on:
     - cron: "0 14 */5 * *"
   workflow_dispatch:
 
+concurrency:
+  group: dealbot
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -52,6 +56,7 @@ jobs:
         run: yarn start
 
       - name: Commit deal history
+        if: always()
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"

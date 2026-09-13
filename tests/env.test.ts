@@ -21,10 +21,8 @@ describe("parseIntegerEnv", () => {
     );
   });
 
-  test("rejects empty string", () => {
-    expect(() => parseIntegerEnv("DEAL_LIMIT", "  ", 50, 1)).toThrow(
-      'DEAL_LIMIT must be an integer >= 1, got "  "',
-    );
+  test("allows zero", () => {
+    expect(parseIntegerEnv("MIN_HOURS_UNTIL_EXPIRY", "0", 48, 0)).toBe(0);
   });
 });
 

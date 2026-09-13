@@ -110,13 +110,17 @@ Minimum discount percentage (default: 30)
 
 Maximum discount percentage (default: 85)
 
-### MIN_REVIEW_COUNT
-
-Minimum number of Steam reviews (default: 100)
-
 ### MIN_RATING
 
-Minimum Steam rating percentage (default: 70)
+Minimum Steam rating percentage (default: 70). Applied after `/games/info/v2` enrichment. Set to `0` to disable. Missing Steam reviews fail this filter when it is enabled.
+
+### MIN_REVIEW_COUNT
+
+Minimum number of Steam reviews (default: 100). Same enrichment path as `MIN_RATING`. Set to `0` to disable.
+
+### MIN_HOURS_UNTIL_EXPIRY
+
+Drop deals that expire sooner than this many hours (default: 48). `0` still rejects already-expired deals, but allows anything still live.
 
 ### DEAL_LIMIT
 

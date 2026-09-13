@@ -1,5 +1,10 @@
 import { EmbedBuilder } from "discord.js";
-import { ITADConfig, ITADDeal, ITADDealsResponse } from "../types";
+import {
+  ITADConfig,
+  ITADDeal,
+  ITADDealsResponse,
+  ITADGameInfo,
+} from "../types";
 import {
   createDealMatcher,
   DealFilterCriteria,
@@ -21,6 +26,7 @@ export type { DealFilterCriteria, DealPredicate } from "./dealFilters";
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_ATTEMPTS = 4;
 const BASE_DELAY_MS = 500;
+export const GAME_INFO_BUDGET = 50;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -234,13 +240,16 @@ export class ITADApi {
     return finalFiltered;
   }
 
-  async getGameInfo(gameIds: string[]): Promise<Map<string, any>> {
-    const gameInfoMap = new Map<string, any>();
+  async getGameInfo(
+    gameIds: string[],
+    budget: number = GAME_INFO_BUDGET,
+  ): Promise<Map<string, ITADGameInfo>> {
+    const gameInfoMap = new Map<string, ITADGameInfo>();
 
-    for (const gameId of gameIds.slice(0, 10)) {
+    for (const gameId of gameIds.slice(0, budget)) {
       try {
         const url = `${this.baseUrl}/games/info/v2?id=${encodeURIComponent(gameId)}`;
-        const info = await this.requestJson(url);
+        const info = (await this.requestJson(url)) as ITADGameInfo;
         gameInfoMap.set(gameId, info);
 
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -250,6 +259,26 @@ export class ITADApi {
     }
 
     return gameInfoMap;
+  }
+
+  // in-memory per run; if 1k/5min budget is tight move to persist on bot-state instead
+  async enrichDeals(
+    deals: ITADDeal[],
+    budget: number = GAME_INFO_BUDGET,
+  ): Promise<ITADDeal[]> {
+    const candidates = deals.slice(0, budget);
+    const infoMap = await this.getGameInfo(
+      candidates.map((deal) => deal.id),
+      budget,
+    );
+
+    return candidates.map((deal) => {
+      const info = infoMap.get(deal.id);
+      if (!info?.reviews?.length) {
+        return { ...deal };
+      }
+      return { ...deal, reviews: info.reviews };
+    });
   }
 
   formatDealMessage(deal: ITADDeal): string {

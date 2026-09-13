@@ -1,4 +1,5 @@
 import { ITADApi } from "../src/services/ITADApi";
+import type { ITADDeal } from "../src/types";
 
 const originalFetch = global.fetch;
 
@@ -130,5 +131,62 @@ describe("ITADApi request", () => {
       api.fetchDealsPage({ country: "US", limit: 10 }),
     ).rejects.toThrow("ITAD API returned invalid JSON");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+function stubDeal(id: string): ITADDeal {
+  return {
+    id,
+    slug: id,
+    title: id,
+    type: "game",
+    mature: false,
+    assets: {},
+    deal: {
+      shop: { id: 61, name: "Steam" },
+      price: { amount: 1, amountInt: 100, currency: "USD" },
+      regular: { amount: 2, amountInt: 200, currency: "USD" },
+      cut: 50,
+      voucher: null,
+      storeLow: { amount: 1, amountInt: 100, currency: "USD" },
+      historyLow: { amount: 1, amountInt: 100, currency: "USD" },
+      flag: null,
+      drm: [{ id: 1, name: "Steam" }],
+      platforms: [],
+      timestamp: "2024-01-01T00:00:00+00:00",
+      expiry: null,
+      url: "https://example.com",
+    },
+  };
+}
+
+describe("enrichDeals", () => {
+  test("attaches reviews and drops deals over the request budget", async () => {
+    const api = new ITADApi("secret-key");
+    const getInfo = jest.spyOn(api, "getGameInfo").mockResolvedValue(
+      new Map([
+        [
+          "good",
+          {
+            reviews: [{ source: "Steam", score: 90, count: 10_000 }],
+          } as never,
+        ],
+        [
+          "bad",
+          {
+            reviews: [{ source: "Steam", score: 10, count: 10_000 }],
+          } as never,
+        ],
+      ]),
+    );
+
+    const enriched = await api.enrichDeals(
+      [stubDeal("good"), stubDeal("bad"), stubDeal("over")],
+      2,
+    );
+
+    expect(enriched.map((deal) => deal.id)).toEqual(["good", "bad"]);
+    expect(enriched[0].reviews?.[0].score).toBe(90);
+    expect(getInfo).toHaveBeenCalledWith(["good", "bad"], 2);
   });
 });
