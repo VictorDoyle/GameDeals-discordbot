@@ -59,7 +59,7 @@ export interface ITADDeal {
   type: string | null;
   mature: boolean;
   assets: ITADAssets;
-  deal: ITADDealInfo;
+  deal?: ITADDealInfo;
   reviews?: ITADReview[];
 }
 

@@ -1,8 +1,9 @@
+import { mapItadDeal } from "../src/core/deal";
 import { api, getCachedDeals } from "./fixtures/itadFixture";
 
 describe("Discord message formatting", () => {
   test("formatDealMessage contains required elements and is under 2000 chars (uses cached data)", async () => {
-    const deals = await getCachedDeals();
+    const deals = (await getCachedDeals()).map(mapItadDeal);
     expect(deals.length).toBeGreaterThan(0);
 
     const deal = deals[0];

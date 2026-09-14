@@ -1,15 +1,13 @@
 import { Client, GatewayIntentBits, TextChannel } from "discord.js";
 import dotenv from "dotenv";
+import { mapItadDeal, type Deal } from "./core/deal";
+import { parseDrmNamesFromEnv, rejectDeal } from "./core/filters";
 import { parseIntegerEnv, parseShopIds } from "./env";
-import { sendDealBatches } from "./posting";
+import { postDealBatches } from "./posting";
 import { DealCollector } from "./services/dealCollector";
-import {
-  createDealMatcher,
-  parseDrmNamesFromEnv,
-} from "./services/dealFilters";
 import { DeduplicationService } from "./services/deduplication";
-import { GAME_INFO_BUDGET, ITADApi } from "./services/ITADApi";
-import { ITADConfig, ITADDeal } from "./types";
+import { ITADApi } from "./services/ITADApi";
+import { ITADConfig } from "./types";
 
 dotenv.config();
 
@@ -131,22 +129,19 @@ async function postDeals() {
     console.log(`   Min rating: ${MIN_RATING}`);
     console.log(`   Min review count: ${MIN_REVIEW_COUNT}`);
 
-    const collectMatcher = createDealMatcher({
+    const collectCriteria = {
       minSavings: MIN_SAVINGS,
       maxSavings: MAX_SAVINGS,
       requiredDrmNames: REQUIRED_DRM_NAMES,
       minHoursUntilExpiry: MIN_HOURS_UNTIL_EXPIRY,
-    });
+    };
 
     const ratingFiltersOn = MIN_RATING > 0 || MIN_REVIEW_COUNT > 0;
-    const collectTarget = ratingFiltersOn ? GAME_INFO_BUDGET : DEAL_LIMIT;
 
     console.log("\n📡 Scanning ITAD pages for matching deals...");
     const postedIds = deduplicationService.getPostedDealIds();
-    const collector = new DealCollector(
-      collectTarget,
-      postedIds,
-      collectMatcher,
+    const collector = new DealCollector(DEAL_LIMIT, postedIds, (deal) =>
+      rejectDeal(deal, collectCriteria),
     );
 
     let offset = 0;
@@ -165,8 +160,8 @@ async function postDeals() {
         break;
       }
 
-      for (const deal of page.list) {
-        collector.accept(deal);
+      for (const raw of page.list) {
+        collector.accept(mapItadDeal(raw));
         if (!collector.needsMore) {
           break;
         }
@@ -174,13 +169,13 @@ async function postDeals() {
 
       const pageStats = collector.stats;
       console.log(
-        `Page ${pageNumber}: scanned ${page.list.length} deals at offset ${offset} (accepted ${pageStats.accepted}/${collectTarget})`,
+        `Page ${pageNumber}: scanned ${page.list.length} deals at offset ${offset} (accepted ${pageStats.accepted}/${DEAL_LIMIT})`,
       );
 
       offset = page.nextOffset;
     }
 
-    let newDeals: ITADDeal[] = collector.results;
+    let newDeals: Deal[] = collector.results;
     const collectStats = collector.stats;
 
     console.log(`\n✓ Collection complete`);
@@ -193,19 +188,14 @@ async function postDeals() {
     );
 
     if (ratingFiltersOn) {
-      const enriched = await api.enrichDeals(newDeals, GAME_INFO_BUDGET);
-      const skippedUnenriched = newDeals.length - enriched.length;
-      const postMatcher = createDealMatcher({
-        minSavings: MIN_SAVINGS,
-        maxSavings: MAX_SAVINGS,
-        requiredDrmNames: REQUIRED_DRM_NAMES,
-        minHoursUntilExpiry: MIN_HOURS_UNTIL_EXPIRY,
-        minRating: MIN_RATING,
-        minReviewCount: MIN_REVIEW_COUNT,
-      });
-      newDeals = enriched.filter(postMatcher).slice(0, DEAL_LIMIT);
-      console.log(
-        `   - Enrichment: ${enriched.length} of ${collector.results.length} (skipped ${skippedUnenriched} over budget)`,
+      const enriched = await api.enrichDeals(newDeals);
+      newDeals = enriched.filter(
+        (deal) =>
+          rejectDeal(deal, {
+            ...collectCriteria,
+            minRating: MIN_RATING,
+            minReviewCount: MIN_REVIEW_COUNT,
+          }) === null,
       );
       console.log(`   - After rating/review filters: ${newDeals.length}`);
     }
@@ -257,7 +247,7 @@ async function postDeals() {
     console.log("\n Posting to Discord...");
     const channel = (await client.channels.fetch(CHANNEL_ID)) as TextChannel;
 
-    await sendDealBatches(
+    await postDealBatches(
       newDeals,
       async (batch) => {
         await channel.send({

@@ -1,48 +1,36 @@
+import type { Deal } from "../src/core/deal";
+import { rejectDeal } from "../src/core/filters";
 import { DealCollector } from "../src/services/dealCollector";
-import { createDealMatcher } from "../src/services/dealFilters";
-import type { ITADDeal } from "../src/types";
 
-function makeDeal(overrides: {
-  id: string;
-  type?: string | null;
-  cut?: number;
-  drm?: Array<{ id: number; name: string }>;
-  expiry?: string | null;
-}): ITADDeal {
+function makeDeal(overrides: Partial<Deal> & { id: string }): Deal {
   return {
-    id: overrides.id,
-    slug: "test-game",
     title: "Test Game",
-    type: overrides.type ?? "game",
-    mature: false,
-    assets: {},
-    deal: {
-      shop: { id: 61, name: "Steam" },
-      price: { amount: 9.99, amountInt: 999, currency: "USD" },
-      regular: { amount: 19.99, amountInt: 1999, currency: "USD" },
-      cut: overrides.cut ?? 50,
-      voucher: null,
-      storeLow: { amount: 9.99, amountInt: 999, currency: "USD" },
-      historyLow: { amount: 9.99, amountInt: 999, currency: "USD" },
-      flag: null,
-      drm: overrides.drm ?? [{ id: 1, name: "Steam" }],
-      platforms: [{ id: 1, name: "Windows" }],
-      timestamp: "2024-01-01T00:00:00+01:00",
-      expiry: overrides.expiry ?? null,
-      url: "https://example.com",
-    },
+    type: "game",
+    hasOffer: true,
+    url: "https://example.com",
+    shopId: 61,
+    shopName: "Steam",
+    price: 9.99,
+    regular: 19.99,
+    currency: "USD",
+    cut: 50,
+    drmNames: ["Steam"],
+    expiry: null,
+    historicalLow: false,
+    ...overrides,
   };
 }
 
-const steamMatcher = createDealMatcher({
-  minSavings: 30,
-  maxSavings: 85,
-  requiredDrmNames: ["Steam"],
-});
+const steamReject = (deal: Deal) =>
+  rejectDeal(deal, {
+    minSavings: 30,
+    maxSavings: 85,
+    requiredDrmNames: ["Steam"],
+  });
 
 describe("DealCollector", () => {
   test("accepts deal matching filters not in postedIds", () => {
-    const collector = new DealCollector(5, new Set(), steamMatcher);
+    const collector = new DealCollector(5, new Set(), steamReject);
     const deal = makeDeal({ id: "deal-1" });
 
     expect(collector.accept(deal)).toBe(true);
@@ -51,11 +39,7 @@ describe("DealCollector", () => {
   });
 
   test("rejects deal in postedIds", () => {
-    const collector = new DealCollector(
-      5,
-      new Set(["deal-1"]),
-      steamMatcher,
-    );
+    const collector = new DealCollector(5, new Set(["deal-1"]), steamReject);
     const deal = makeDeal({ id: "deal-1" });
 
     expect(collector.accept(deal)).toBe(false);
@@ -64,7 +48,7 @@ describe("DealCollector", () => {
   });
 
   test("rejects duplicate within same run", () => {
-    const collector = new DealCollector(5, new Set(), steamMatcher);
+    const collector = new DealCollector(5, new Set(), steamReject);
     const deal = makeDeal({ id: "deal-1" });
 
     expect(collector.accept(deal)).toBe(true);
@@ -74,7 +58,7 @@ describe("DealCollector", () => {
   });
 
   test("stops accepting after targetCount reached", () => {
-    const collector = new DealCollector(2, new Set(), steamMatcher);
+    const collector = new DealCollector(2, new Set(), steamReject);
 
     collector.accept(makeDeal({ id: "deal-1" }));
     collector.accept(makeDeal({ id: "deal-2" }));
@@ -84,19 +68,20 @@ describe("DealCollector", () => {
     expect(collector.needsMore).toBe(false);
   });
 
-  test("rejects non-matching filter deals", () => {
-    const collector = new DealCollector(5, new Set(), steamMatcher);
-    const deal = makeDeal({ id: "deal-1", drm: [{ id: 1000, name: "Drm Free" }] });
+  test("rejects non-matching filter deals and counts the reason", () => {
+    const collector = new DealCollector(5, new Set(), steamReject);
+    const deal = makeDeal({ id: "deal-1", drmNames: ["Drm Free"] });
 
     expect(collector.accept(deal)).toBe(false);
     expect(collector.stats.skippedFilter).toBe(1);
+    expect(collector.stats.rejects.drm).toBe(1);
     expect(collector.results).toHaveLength(0);
   });
 });
 
 describe("DealCollector page stream", () => {
   test("stops early once target is reached mid-stream", () => {
-    const collector = new DealCollector(2, new Set(), steamMatcher);
+    const collector = new DealCollector(2, new Set(), steamReject);
     const pageOne = [
       makeDeal({ id: "deal-1" }),
       makeDeal({ id: "skip-dlc", type: "dlc" }),
@@ -117,5 +102,6 @@ describe("DealCollector page stream", () => {
       "deal-1",
       "deal-2",
     ]);
+    expect(collector.stats.rejects.type).toBe(1);
   });
 });

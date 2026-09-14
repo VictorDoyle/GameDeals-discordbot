@@ -1,6 +1,8 @@
 // Manual live smoke script. Not part of `yarn test`.
 // Run: yarn ts-node tests/base.ts
 import * as dotenv from "dotenv";
+import { mapItadDeal } from "../src/core/deal";
+import { filterDeals } from "../src/core/filters";
 import { ITADApi } from "../src/services/ITADApi";
 import { ITADDeal } from "../src/types";
 
@@ -186,7 +188,7 @@ class ITADTestSuite {
 
       console.log("--- END DEBUG ---\n");
 
-      const filtered = this.api.filterDeals(deals, {
+      const filtered = filterDeals(deals.map(mapItadDeal), {
         minSavings,
         maxSavings,
         requiredDrmNames: ["Steam"],
@@ -199,7 +201,7 @@ class ITADTestSuite {
       const EXPIRY_WINDOW_MS = 48 * 60 * 60 * 1000;
       let allExpiryOk = true;
       for (const deal of filtered) {
-        const expiry = deal.deal.expiry;
+        const expiry = deal.expiry;
         if (expiry) {
           const expiryTime = Date.parse(expiry);
           if (!isNaN(expiryTime) && expiryTime - now <= EXPIRY_WINDOW_MS) {
@@ -227,15 +229,12 @@ class ITADTestSuite {
       let allHaveSteamDRM = true;
 
       for (const deal of filtered) {
-        if (deal.deal.cut < minSavings || deal.deal.cut > maxSavings) {
+        if (deal.cut < minSavings || deal.cut > maxSavings) {
           allPassedSavings = false;
-          console.log(`  Failed savings: ${deal.title} - ${deal.deal.cut}%`);
+          console.log(`  Failed savings: ${deal.title} - ${deal.cut}%`);
         }
 
-        const hasSteamDRM = deal.deal.drm?.some(
-          (drmInfo) => drmInfo.name === "Steam",
-        );
-        if (!hasSteamDRM) {
+        if (!deal.drmNames.includes("Steam")) {
           allHaveSteamDRM = false;
           console.log(`  Failed DRM: ${deal.title} - No Steam DRM`);
         }
@@ -274,7 +273,7 @@ class ITADTestSuite {
         return;
       }
 
-      const deal = deals[0];
+      const deal = mapItadDeal(deals[0]);
       const message = this.api.formatDealMessage(deal);
 
       const requiredElements = [
@@ -337,30 +336,19 @@ class ITADTestSuite {
         return;
       }
 
-      // Prefer a deal with assets or game image for testing image selection
-      let candidate: ITADDeal | null = null;
-      for (const d of deals) {
-        const assets = (d as any).assets || {};
-        const gameImage = (d as any).game?.image;
-        if (assets.boxart || assets.banner600 || gameImage) {
-          candidate = d;
-          break;
-        }
-      }
-
-      // If none matched, just use the first deal to validate structure
-      const deal = candidate || deals[0];
+      const mapped = deals.map(mapItadDeal);
+      const deal = mapped.find((d) => d.thumbnail || d.image) ?? mapped[0];
 
       const embed = this.api.formatDealEmbed(deal);
       const json = embed.toJSON();
 
       // Title and URL
-      if (json.title === deal.title && json.url === deal.deal.url) {
+      if (json.title === deal.title && json.url === deal.url) {
         this.pass("Embed title and URL");
       } else {
         this.fail(
           "Embed title/URL",
-          `Expected title ${deal.title} and url ${deal.deal.url}`,
+          `Expected title ${deal.title} and url ${deal.url}`,
         );
       }
 
@@ -375,7 +363,7 @@ class ITADTestSuite {
       }
 
       // Description for historical low
-      if (deal.deal.flag === "H") {
+      if (deal.historicalLow) {
         const desc = json.description || "";
         if (desc.toLowerCase().includes("historical low")) {
           this.pass("Embed historical low description");
@@ -390,18 +378,13 @@ class ITADTestSuite {
       }
 
       // Image selection
-      const assets = (deal as any).assets || {};
-      const gameImage = (deal as any).game?.image;
-      const boxart = assets.boxart;
-      const banner600 = assets.banner600 || assets.banner300 || assets.banner;
-
       const hasThumbnail = !!json.thumbnail?.url;
       const hasImage = !!json.image?.url;
 
-      if (boxart) {
+      if (deal.thumbnail) {
         if (
           hasThumbnail &&
-          String(json.thumbnail?.url || "").includes(boxart)
+          String(json.thumbnail?.url || "").includes(deal.thumbnail)
         ) {
           this.pass("Embed thumbnail uses boxart");
         } else {
@@ -410,20 +393,11 @@ class ITADTestSuite {
             "Boxart present but not used as thumbnail",
           );
         }
-      } else if (banner600) {
-        if (hasImage && String(json.image?.url || "").includes(banner600)) {
+      } else if (deal.image) {
+        if (hasImage && String(json.image?.url || "").includes(deal.image)) {
           this.pass("Embed image uses banner");
         } else {
           this.fail("Embed image", "Banner present but not used as image");
-        }
-      } else if (gameImage) {
-        if (
-          hasThumbnail &&
-          String(json.thumbnail?.url || "").includes(gameImage)
-        ) {
-          this.pass("Embed thumbnail uses game image");
-        } else {
-          this.fail("Embed game image", "Game image present but not used");
         }
       } else {
         this.pass("Embed image not applicable");

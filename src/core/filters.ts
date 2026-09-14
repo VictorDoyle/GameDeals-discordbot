@@ -1,4 +1,4 @@
-import { ITADDeal } from "../types";
+import type { Deal } from "./deal";
 
 export interface DealFilterCriteria {
   minSavings: number;
@@ -10,54 +10,59 @@ export interface DealFilterCriteria {
   minReviewCount?: number;
 }
 
-export type DealPredicate = (deal: ITADDeal) => boolean;
+export type RejectReason =
+  | "missing-deal"
+  | "type"
+  | "cut"
+  | "drm"
+  | "expiry"
+  | "rating"
+  | "reviews";
+
+export type DealReject = (deal: Deal) => RejectReason | null;
 
 const DEFAULT_ALLOWED_TYPES: ReadonlySet<string | null> = new Set(["game"]);
 const DEFAULT_MIN_HOURS_UNTIL_EXPIRY = 48;
 
-export function hasDealInfo(deal: ITADDeal): boolean {
-  return Boolean(deal.deal);
+export function hasDealInfo(deal: Deal): boolean {
+  return deal.hasOffer;
 }
 
 export function isAllowedType(
-  deal: ITADDeal,
+  deal: Deal,
   allowedTypes: ReadonlySet<string | null>,
 ): boolean {
   return allowedTypes.has(deal.type);
 }
 
 export function savingsInRange(
-  deal: ITADDeal,
+  deal: Deal,
   minSavings: number,
   maxSavings: number,
 ): boolean {
-  const cut = deal.deal?.cut ?? 0;
-  return cut >= minSavings && cut <= maxSavings;
+  return deal.cut >= minSavings && deal.cut <= maxSavings;
 }
 
 export function hasAnyDrmName(
-  deal: ITADDeal,
+  deal: Deal,
   drmNames: readonly string[],
 ): boolean {
   if (drmNames.length === 0) {
     return true;
   }
 
-  return (
-    deal.deal?.drm?.some((drmInfo) => drmNames.includes(drmInfo.name)) ?? false
-  );
+  return drmNames.some((name) => deal.drmNames.includes(name));
 }
 
 export function expiresAfterWindow(
-  deal: ITADDeal,
+  deal: Deal,
   minHoursUntilExpiry: number,
 ): boolean {
-  const expiry = deal.deal?.expiry;
-  if (!expiry) {
+  if (!deal.expiry) {
     return true;
   }
 
-  const expiryTime = Date.parse(expiry);
+  const expiryTime = Date.parse(deal.expiry);
   if (isNaN(expiryTime)) {
     return true;
   }
@@ -66,11 +71,11 @@ export function expiresAfterWindow(
   return expiryTime - Date.now() > minExpiryMs;
 }
 
-function steamReview(deal: ITADDeal) {
+function steamReview(deal: Deal) {
   return deal.reviews?.find((review) => review.source === "Steam");
 }
 
-export function meetsMinRating(deal: ITADDeal, minRating: number): boolean {
+export function meetsMinRating(deal: Deal, minRating: number): boolean {
   if (minRating <= 0) {
     return true;
   }
@@ -80,7 +85,7 @@ export function meetsMinRating(deal: ITADDeal, minRating: number): boolean {
 }
 
 export function meetsMinReviewCount(
-  deal: ITADDeal,
+  deal: Deal,
   minReviewCount: number,
 ): boolean {
   if (minReviewCount <= 0) {
@@ -91,7 +96,10 @@ export function meetsMinReviewCount(
   return review !== undefined && review.count >= minReviewCount;
 }
 
-export function createDealMatcher(criteria: DealFilterCriteria): DealPredicate {
+export function rejectDeal(
+  deal: Deal,
+  criteria: DealFilterCriteria,
+): RejectReason | null {
   const allowedTypes = criteria.allowedTypes ?? DEFAULT_ALLOWED_TYPES;
   const requiredDrmNames = criteria.requiredDrmNames ?? [];
   const minHoursUntilExpiry =
@@ -99,37 +107,41 @@ export function createDealMatcher(criteria: DealFilterCriteria): DealPredicate {
   const minRating = criteria.minRating ?? 0;
   const minReviewCount = criteria.minReviewCount ?? 0;
 
-  return (deal: ITADDeal): boolean => {
-    if (!hasDealInfo(deal)) {
-      return false;
-    }
+  if (!hasDealInfo(deal)) {
+    return "missing-deal";
+  }
+  if (!isAllowedType(deal, allowedTypes)) {
+    return "type";
+  }
+  if (!savingsInRange(deal, criteria.minSavings, criteria.maxSavings)) {
+    return "cut";
+  }
+  if (!hasAnyDrmName(deal, requiredDrmNames)) {
+    return "drm";
+  }
+  if (!expiresAfterWindow(deal, minHoursUntilExpiry)) {
+    return "expiry";
+  }
+  if (!meetsMinRating(deal, minRating)) {
+    return "rating";
+  }
+  if (!meetsMinReviewCount(deal, minReviewCount)) {
+    return "reviews";
+  }
+  return null;
+}
 
-    if (!isAllowedType(deal, allowedTypes)) {
-      return false;
-    }
+export function createDealMatcher(
+  criteria: DealFilterCriteria,
+): (deal: Deal) => boolean {
+  return (deal) => rejectDeal(deal, criteria) === null;
+}
 
-    if (!savingsInRange(deal, criteria.minSavings, criteria.maxSavings)) {
-      return false;
-    }
-
-    if (!hasAnyDrmName(deal, requiredDrmNames)) {
-      return false;
-    }
-
-    if (!expiresAfterWindow(deal, minHoursUntilExpiry)) {
-      return false;
-    }
-
-    if (!meetsMinRating(deal, minRating)) {
-      return false;
-    }
-
-    if (!meetsMinReviewCount(deal, minReviewCount)) {
-      return false;
-    }
-
-    return true;
-  };
+export function filterDeals(
+  deals: Deal[],
+  criteria: DealFilterCriteria,
+): Deal[] {
+  return deals.filter((deal) => rejectDeal(deal, criteria) === null);
 }
 
 export function parseDrmNamesFromEnv(rawValue: string | undefined): string[] {

@@ -1,43 +1,48 @@
-import { ITADDeal } from "../types";
-import { DealPredicate } from "./dealFilters";
+import type { Deal } from "../core/deal";
+import type { DealReject, RejectReason } from "../core/filters";
 
 export interface DealCollectorStats {
   accepted: number;
   skippedPosted: number;
   skippedFilter: number;
   skippedDuplicate: number;
+  rejects: Partial<Record<RejectReason, number>>;
 }
 
 export class DealCollector {
   private readonly targetCount: number;
   private readonly postedIds: ReadonlySet<string>;
-  private readonly matchesDeal: DealPredicate;
+  private readonly reject: DealReject;
   private readonly collectedIds = new Set<string>();
-  private readonly collected: ITADDeal[] = [];
+  private readonly collected: Deal[] = [];
   private readonly statsInternal: DealCollectorStats = {
     accepted: 0,
     skippedPosted: 0,
     skippedFilter: 0,
     skippedDuplicate: 0,
+    rejects: {},
   };
 
   constructor(
     targetCount: number,
     postedIds: ReadonlySet<string>,
-    matchesDeal: DealPredicate,
+    reject: DealReject,
   ) {
     this.targetCount = targetCount;
     this.postedIds = postedIds;
-    this.matchesDeal = matchesDeal;
+    this.reject = reject;
   }
 
-  accept(deal: ITADDeal): boolean {
+  accept(deal: Deal): boolean {
     if (this.collected.length >= this.targetCount) {
       return false;
     }
 
-    if (!this.matchesDeal(deal)) {
+    const reason = this.reject(deal);
+    if (reason) {
       this.statsInternal.skippedFilter++;
+      this.statsInternal.rejects[reason] =
+        (this.statsInternal.rejects[reason] ?? 0) + 1;
       return false;
     }
 
@@ -57,7 +62,7 @@ export class DealCollector {
     return true;
   }
 
-  get results(): ITADDeal[] {
+  get results(): Deal[] {
     return this.collected;
   }
 
@@ -66,6 +71,9 @@ export class DealCollector {
   }
 
   get stats(): DealCollectorStats {
-    return { ...this.statsInternal };
+    return {
+      ...this.statsInternal,
+      rejects: { ...this.statsInternal.rejects },
+    };
   }
 }

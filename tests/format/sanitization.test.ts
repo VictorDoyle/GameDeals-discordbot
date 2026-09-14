@@ -1,8 +1,9 @@
+import { mapItadDeal } from "../../src/core/deal";
 import { api, getCachedDeals } from "../fixtures/itadFixture";
 
 describe("Sanitization / escaping", () => {
   test("formatted message and embed avoid raw mentions and mass-ping tokens", async () => {
-    const deals = await getCachedDeals();
+    const deals = (await getCachedDeals()).map(mapItadDeal);
     expect(deals.length).toBeGreaterThan(0);
 
     const deal = deals[0];
