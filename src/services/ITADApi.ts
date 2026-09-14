@@ -1,32 +1,38 @@
 import { EmbedBuilder } from "discord.js";
 import {
+  dealBadges,
+  type AlsoAt,
+  type Deal,
+  type GiveawayRaw,
+} from "../core/deal";
+import {
   ITADConfig,
   ITADDeal,
   ITADDealsResponse,
   ITADGameInfo,
 } from "../types";
-import {
-  createDealMatcher,
-  DealFilterCriteria,
-  hasAnyDrmName,
-  savingsInRange,
-} from "./dealFilters";
 
-export {
-  createDealMatcher,
-  expiresAfterWindow,
-  hasAnyDrmName,
-  hasDealInfo,
-  isAllowedType,
-  parseDrmNamesFromEnv,
-  savingsInRange,
-} from "./dealFilters";
-export type { DealFilterCriteria, DealPredicate } from "./dealFilters";
+const DISCORD_FIELD_MAX = 1024;
+const BADGE_LABEL: Record<string, string> = {
+  "historical-low": "🔥 **HISTORICAL LOW**",
+  "near-low": "📉 **NEAR LOW**",
+  "store-low": "🏪 **STORE LOW**",
+};
 
-const REQUEST_TIMEOUT_MS = 15_000;
+function alsoAtText(alsoAt: AlsoAt[]): string {
+  return alsoAt
+    .map(
+      (entry) =>
+        `${entry.shopName}: ${entry.currency} ${entry.price.toFixed(2)}`,
+    )
+    .join("\n")
+    .slice(0, DISCORD_FIELD_MAX);
+}
+
+const REQUEST_TIMEOUT_MS = 15_000; // ITAD can stall
 const MAX_ATTEMPTS = 4;
-const BASE_DELAY_MS = 500;
-export const GAME_INFO_BUDGET = 50;
+const BASE_DELAY_MS = 500; // jittered exponential backoff
+const INFO_CALL_GAP_MS = 200; // ITAD 1000 req / 5 min
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,19 +93,28 @@ export class ITADApi {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
-        const response = await fetch(url, {
-          headers: { "ITAD-API-Key": this.apiKey },
-          signal: controller.signal,
-        });
+        let response: Response;
+        try {
+          response = await fetch(url, {
+            headers: { "ITAD-API-Key": this.apiKey },
+            signal: controller.signal,
+          });
+        } catch (error) {
+          lastError = error;
+          if (attempt < MAX_ATTEMPTS && isRetryableNetworkError(error)) {
+            await sleep(delayFor(undefined, attempt));
+            continue;
+          }
+          throw error;
+        }
 
         if (!response.ok) {
-          const errorMessage = await itadErrorMessage(response);
+          lastError = new Error(await itadErrorMessage(response));
           if (isRetryableStatus(response.status) && attempt < MAX_ATTEMPTS) {
-            lastError = new Error(errorMessage);
             await sleep(delayFor(response, attempt));
             continue;
           }
-          throw new Error(errorMessage);
+          throw lastError;
         }
 
         try {
@@ -107,20 +122,6 @@ export class ITADApi {
         } catch {
           throw new Error("ITAD API returned invalid JSON");
         }
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          (error.message === "ITAD API returned invalid JSON" ||
-            error.message.startsWith("ITAD API request failed:"))
-        ) {
-          throw error;
-        }
-        lastError = error;
-        if (attempt < MAX_ATTEMPTS && isRetryableNetworkError(error)) {
-          await sleep(delayFor(undefined, attempt));
-          continue;
-        }
-        throw error;
       } finally {
         clearTimeout(timer);
       }
@@ -169,6 +170,25 @@ export class ITADApi {
     return page.list;
   }
 
+  async fetchGiveaways(country: string): Promise<GiveawayRaw[]> {
+    const params = new URLSearchParams();
+    params.append("country", country || "US");
+    const data = await this.requestJson(
+      `${this.baseUrl}/giveaways/v1?${params.toString()}`,
+    );
+    if (Array.isArray(data)) {
+      return data as GiveawayRaw[];
+    }
+    if (
+      data &&
+      typeof data === "object" &&
+      Array.isArray((data as { list?: unknown }).list)
+    ) {
+      return (data as { list: GiveawayRaw[] }).list;
+    }
+    return [];
+  }
+
   async getShops(): Promise<Map<number, string>> {
     const url = `${this.baseUrl}/service/shops/v1`;
 
@@ -190,69 +210,16 @@ export class ITADApi {
     }
   }
 
-  filterDeals(deals: ITADDeal[], criteria: DealFilterCriteria): ITADDeal[] {
-    const minSavings = criteria.minSavings;
-    const maxSavings = criteria.maxSavings;
-    const requiredDrmNames = criteria.requiredDrmNames ?? [];
-    const drmLabel =
-      requiredDrmNames.length > 0 ? requiredDrmNames.join(", ") : "none";
-
-    console.log("\n--- FILTER DEBUG (ITADApi) ---");
-
-    const step1 = deals.filter((deal) => deal.deal);
-    console.log(`After checking deal exists: ${step1.length}`);
-
-    const step2 = step1.filter((deal) => deal.type === "game");
-    console.log(`After type === 'game': ${step2.length}`);
-    console.log(`Rejected types:`, [
-      ...new Set(step1.filter((d) => d.type !== "game").map((d) => d.type)),
-    ]);
-
-    const step3 = step2.filter((deal) => {
-      return savingsInRange(deal, minSavings, maxSavings);
-    });
-    console.log(
-      `After savings filter (${minSavings}-${maxSavings}%): ${step3.length}`,
-    );
-
-    const cuts = step2.slice(0, 10).map((d) => `${d.title}: ${d.deal.cut}%`);
-    console.log(`Sample cuts from step2:`, cuts);
-    const cutValues = step2.map((d) => d.deal.cut || 0);
-    const minCut = Math.min(...cutValues);
-    const maxCut = Math.max(...cutValues);
-    console.log(`Cut range: ${minCut}% to ${maxCut}%`);
-
-    const step4 = step3.filter((deal) => {
-      return hasAnyDrmName(deal, requiredDrmNames);
-    });
-    console.log(`After DRM filter (${drmLabel}): ${step4.length}`);
-    console.log(
-      `Sample DRM arrays:`,
-      step3.slice(0, 3).map((d) => `${d.title}: ${JSON.stringify(d.deal.drm)}`),
-    );
-    console.log("--- END FILTER DEBUG ---\n");
-
-    const matchesDeal = createDealMatcher(criteria);
-    const finalFiltered = deals.filter(matchesDeal);
-
-    console.log(`After all filters: ${finalFiltered.length}`);
-
-    return finalFiltered;
-  }
-
-  async getGameInfo(
-    gameIds: string[],
-    budget: number = GAME_INFO_BUDGET,
-  ): Promise<Map<string, ITADGameInfo>> {
+  async getGameInfo(gameIds: string[]): Promise<Map<string, ITADGameInfo>> {
     const gameInfoMap = new Map<string, ITADGameInfo>();
 
-    for (const gameId of gameIds.slice(0, budget)) {
+    for (const gameId of gameIds) {
       try {
         const url = `${this.baseUrl}/games/info/v2?id=${encodeURIComponent(gameId)}`;
         const info = (await this.requestJson(url)) as ITADGameInfo;
         gameInfoMap.set(gameId, info);
 
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await sleep(INFO_CALL_GAP_MS);
       } catch (error) {
         console.error(`Error fetching info for game ${gameId}:`, error);
       }
@@ -261,18 +228,10 @@ export class ITADApi {
     return gameInfoMap;
   }
 
-  // in-memory per run; if 1k/5min budget is tight move to persist on bot-state instead
-  async enrichDeals(
-    deals: ITADDeal[],
-    budget: number = GAME_INFO_BUDGET,
-  ): Promise<ITADDeal[]> {
-    const candidates = deals.slice(0, budget);
-    const infoMap = await this.getGameInfo(
-      candidates.map((deal) => deal.id),
-      budget,
-    );
+  async enrichDeals(deals: Deal[]): Promise<Deal[]> {
+    const infoMap = await this.getGameInfo(deals.map((deal) => deal.id));
 
-    return candidates.map((deal) => {
+    return deals.map((deal) => {
       const info = infoMap.get(deal.id);
       if (!info?.reviews?.length) {
         return { ...deal };
@@ -281,14 +240,10 @@ export class ITADApi {
     });
   }
 
-  formatDealMessage(deal: ITADDeal): string {
-    const price = deal.deal.price;
-    const regular = deal.deal.regular;
-    const cut = deal.deal.cut;
-
+  formatDealMessage(deal: Deal, nearLowPercent = 5): string {
     let message = `**${deal.title}**\n\n`;
-    message += `Price: ${price.currency} ${price.amount.toFixed(2)} (was ${regular.amount.toFixed(2)})\n`;
-    message += `Discount: ${cut}% OFF\n`;
+    message += `Price: ${deal.currency} ${deal.price.toFixed(2)} (was ${deal.regular.toFixed(2)})\n`;
+    message += `Discount: ${deal.cut}% OFF\n`;
 
     const steamReview = deal.reviews?.find(
       (review) => review.source === "Steam",
@@ -304,40 +259,48 @@ export class ITADApi {
       message += `Metacritic: ${metacritic.score}/100\n`;
     }
 
-    const shop = deal.deal.shop;
-    message += `Store: ${shop.name}\n`;
+    message += `Store: ${deal.shopName}\n`;
 
-    if (deal.deal.flag === "H") {
-      message += `HISTORICAL LOW!\n`;
+    const badges = dealBadges(deal, nearLowPercent);
+    if (badges.length > 0) {
+      message += `${badges.join(", ")}\n`;
+    }
+    if (deal.alsoAt && deal.alsoAt.length > 0) {
+      message += `Also at: ${deal.alsoAt.map((entry) => entry.shopName).join(", ")}\n`;
     }
 
-    message += `Link: ${deal.deal.url}\n\n`;
+    message += `Link: ${deal.url}\n\n`;
 
     return message;
   }
 
-  formatDealEmbed(deal: ITADDeal): EmbedBuilder {
-    const price = deal.deal.price;
-    const regular = deal.deal.regular;
-    const cut = deal.deal.cut;
-    const shop = deal.deal.shop;
-
+  formatDealEmbed(deal: Deal, nearLowPercent = 5): EmbedBuilder {
     const embed = new EmbedBuilder()
       .setTitle(deal.title)
-      .setURL(deal.deal.url)
-      .setColor(deal.deal.flag === "H" ? 0x00ff99 : 0x5865f2)
+      .setURL(deal.url)
+      .setColor(deal.historicalLow ? 0x00ff99 : 0x5865f2)
       .addFields(
         {
           name: "Price",
-          value: `${price.currency} ${price.amount.toFixed(2)} (was ${regular.amount.toFixed(2)})`,
+          value: `${deal.currency} ${deal.price.toFixed(2)} (was ${deal.regular.toFixed(2)})`,
           inline: true,
         },
-        { name: "Discount", value: `${cut}% OFF`, inline: true },
-        { name: "Store", value: shop.name, inline: true },
+        { name: "Discount", value: `${deal.cut}% OFF`, inline: true },
+        { name: "Store", value: deal.shopName, inline: true },
       );
 
-    if (deal.deal.flag === "H") {
-      embed.setDescription("🔥 **HISTORICAL LOW**");
+    const badges = dealBadges(deal, nearLowPercent);
+    if (badges.length > 0) {
+      embed.setDescription(
+        badges.map((badge) => BADGE_LABEL[badge] ?? badge).join(" · "),
+      );
+    }
+
+    if (deal.alsoAt && deal.alsoAt.length > 0) {
+      embed.addFields({
+        name: "Also at",
+        value: alsoAtText(deal.alsoAt),
+      });
     }
 
     const steamReview = deal.reviews?.find((r) => r.source === "Steam");
@@ -349,17 +312,10 @@ export class ITADApi {
       });
     }
 
-    const assets = (deal as any).assets || {};
-    const gameImage = (deal as any).game?.image;
-    const boxart = assets.boxart;
-    const banner600 = assets.banner600 || assets.banner300 || assets.banner;
-
-    if (boxart) {
-      embed.setThumbnail(boxart);
-    } else if (banner600) {
-      embed.setImage(banner600);
-    } else if (gameImage) {
-      embed.setThumbnail(gameImage);
+    if (deal.thumbnail) {
+      embed.setThumbnail(deal.thumbnail);
+    } else if (deal.image) {
+      embed.setImage(deal.image);
     }
 
     return embed;

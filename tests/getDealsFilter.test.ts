@@ -1,22 +1,17 @@
+import { http, HttpResponse } from "msw";
 import { ITADApi } from "../src/services/ITADApi";
+import { server } from "./msw/server";
 
 describe("fetchDealsPage cut filter", () => {
-  const originalFetch = global.fetch;
-
-  afterEach(() => {
-    global.fetch = originalFetch;
-  });
-
   test("appends cut filter to request URL when savings bounds provided", async () => {
     let capturedUrl = "";
 
-    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
-      capturedUrl = input.toString();
-      return {
-        ok: true,
-        json: async () => ({ list: [] }),
-      } as Response;
-    });
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({ list: [] });
+      }),
+    );
 
     const api = new ITADApi("test-api-key");
     await api.fetchDealsPage({
@@ -37,13 +32,12 @@ describe("fetchDealsPage cut filter", () => {
   test("omits cut filter when savings bounds not provided", async () => {
     let capturedUrl = "";
 
-    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
-      capturedUrl = input.toString();
-      return {
-        ok: true,
-        json: async () => ({ list: [] }),
-      } as Response;
-    });
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({ list: [] });
+      }),
+    );
 
     const api = new ITADApi("test-api-key");
     await api.fetchDealsPage({ country: "US", limit: 10 });
@@ -52,14 +46,13 @@ describe("fetchDealsPage cut filter", () => {
   });
 
   test("returns nextOffset derived from request offset and list length", async () => {
-    global.fetch = jest.fn(async () => {
-      return {
-        ok: true,
-        json: async () => ({
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", () => {
+        return HttpResponse.json({
           list: [{ id: "a" }, { id: "b" }],
-        }),
-      } as Response;
-    });
+        });
+      }),
+    );
 
     const api = new ITADApi("test-api-key");
     const page = await api.fetchDealsPage({

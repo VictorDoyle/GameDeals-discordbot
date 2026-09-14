@@ -1,24 +1,28 @@
 # Tests
 
-`yarn test` is offline. It runs unit tests in `dealCollector`, `dealFilters`, and `getDealsFilter`. Live ITAD files are skipped unless you opt in.
+`yarn test` is offline. MSW serves recorded fixtures from `tests/fixtures/itad/`.
 
 ```bash
 yarn test
 ```
 
-## Live ITAD tests (opt-in)
+## Record fixtures
 
-These hit `/deals/v2` once per run via `tests/fixtures/itadFixture.ts`. They need a key and `ITAD_LIVE=1`. Make sure to read the latest rate limits from ITAD service here: [ITAD Rate Limiting](https://docs.isthereanydeal.com/#section/Rate-Limiting)
+Needs `ITAD_API_KEY`. Strips the key from the written JSON.
+
+```bash
+yarn fixtures:record
+```
+
+## Live ITAD (opt-in)
+
+Skip MSW and hit the real API:
 
 ```bash
 ITAD_LIVE=1 yarn test
 ```
 
-`.env` needs `ITAD_API_KEY`. `SHOP_IDS` is optional.
-
-Live files: `apiConnection`, `responseStructure`, `filtering`, `storeFiltering`, `messageFormatting`, `embedFormatting`, `format/sanitization`.
-
-`tests/base.ts` is a standalone smoke script, not a Jest file:
+`tests/base.ts` is a standalone smoke script, not part of `yarn test`:
 
 ```bash
 yarn ts-node tests/base.ts

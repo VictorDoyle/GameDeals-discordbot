@@ -1,9 +1,7 @@
 import type { ITADDeal } from "../src/types";
-import { describeLive, getCachedDeals } from "./fixtures/itadFixture";
+import { getCachedDeals } from "./fixtures/itadFixture";
 
-describeLive("Response structure", () => {
-  jest.setTimeout(30000);
-
+describe("Response structure", () => {
   test("cached deals contain required fields", async () => {
     const deals = await getCachedDeals();
     expect(Array.isArray(deals)).toBe(true);

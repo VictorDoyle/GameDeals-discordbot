@@ -1,8 +1,6 @@
-import { describeLive, getCachedDeals } from "./fixtures/itadFixture";
+import { getCachedDeals } from "./fixtures/itadFixture";
 
-describeLive("Store filtering", () => {
-  jest.setTimeout(30000);
-
+describe("Store filtering", () => {
   test("deals come from requested stores only (uses cached data)", async () => {
     const shopIds = process.env.SHOP_IDS
       ? process.env.SHOP_IDS.split(",").map((id) => parseInt(id.trim(), 10))

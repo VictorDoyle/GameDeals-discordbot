@@ -1,60 +1,41 @@
-import type { ITADDeal } from "../src/types";
-import { api, describeLive, getCachedDeals } from "./fixtures/itadFixture";
+import { mapItadDeal } from "../src/core/deal";
+import { api, getCachedDeals } from "./fixtures/itadFixture";
 
-describeLive("Embed formatting", () => {
-  jest.setTimeout(30000);
-
+describe("Embed formatting", () => {
   test("formatDealEmbed returns embed with expected structure and images (uses cached data)", async () => {
-    const deals = await getCachedDeals();
+    const deals = (await getCachedDeals()).map(mapItadDeal);
     expect(deals.length).toBeGreaterThan(0);
 
-    let candidate: ITADDeal | null = null;
-    for (const d of deals) {
-      const assets = (d as any).assets || {};
-      const gameImage = (d as any).game?.image;
-      if (assets.boxart || assets.banner600 || gameImage) {
-        candidate = d;
-        break;
-      }
-    }
-
-    const deal = candidate || deals[0];
-    const embed = api.formatDealEmbed(deal as ITADDeal);
-    const json = (embed as any).toJSON ? (embed as any).toJSON() : embed;
+    const deal = deals.find((d) => d.thumbnail || d.image) ?? deals[0];
+    const embed = api.formatDealEmbed(deal);
+    const json = embed.toJSON();
 
     expect(json.title).toBe(deal.title);
-    expect(json.url).toBe(deal.deal.url);
+    expect(json.url).toBe(deal.url);
 
-    const fieldNames = (json.fields || []).map((f: any) => f.name);
+    const fieldNames = (json.fields || []).map((f) => f.name);
     const required = ["Price", "Discount", "Store"];
     for (const r of required) expect(fieldNames).toContain(r);
 
-    if (deal.deal.flag === "H") {
+    if (deal.historicalLow) {
       const desc = json.description || "";
       expect(String(desc).toLowerCase()).toContain("historical low");
     }
 
-    // Image checks (best-effort, depending on available assets)
-    const assets = (deal as any).assets || {};
-    const gameImage = (deal as any).game?.image;
-    const boxart = assets.boxart;
-    const banner600 = assets.banner600 || assets.banner300 || assets.banner;
+    const withAlso = {
+      ...deal,
+      alsoAt: [{ shopName: "GOG", price: 8.99, currency: "USD" }],
+    };
+    const alsoJson = api.formatDealEmbed(withAlso).toJSON();
+    expect((alsoJson.fields || []).map((f) => f.name)).toContain("Also at");
+    expect(
+      (alsoJson.fields || []).find((f) => f.name === "Also at")?.value,
+    ).toContain("GOG");
 
-    const hasThumbnail = !!json.thumbnail?.url;
-    const hasImage = !!json.image?.url;
-
-    if (boxart) {
-      expect(
-        hasThumbnail && String(json.thumbnail?.url || "").includes(boxart),
-      ).toBeTruthy();
-    } else if (banner600) {
-      expect(
-        hasImage && String(json.image?.url || "").includes(banner600),
-      ).toBeTruthy();
-    } else if (gameImage) {
-      expect(
-        hasThumbnail && String(json.thumbnail?.url || "").includes(gameImage),
-      ).toBeTruthy();
+    if (deal.thumbnail) {
+      expect(String(json.thumbnail?.url || "")).toContain(deal.thumbnail);
+    } else if (deal.image) {
+      expect(String(json.image?.url || "")).toContain(deal.image);
     }
   });
 });

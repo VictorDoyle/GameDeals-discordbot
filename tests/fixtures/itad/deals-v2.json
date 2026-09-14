@@ -1,0 +1,78 @@
+{
+  "list": [
+    {
+      "id": "018d937f-game-hollow-knight",
+      "slug": "hollow-knight",
+      "title": "Hollow Knight",
+      "type": "game",
+      "mature": false,
+      "assets": {
+        "boxart": "https://example.com/assets/hollow-knight-boxart.jpg",
+        "banner600": "https://example.com/assets/hollow-knight-banner.jpg"
+      },
+      "deal": {
+        "shop": { "id": 61, "name": "Steam" },
+        "price": { "amount": 7.49, "amountInt": 749, "currency": "USD" },
+        "regular": { "amount": 14.99, "amountInt": 1499, "currency": "USD" },
+        "cut": 50,
+        "voucher": null,
+        "storeLow": { "amount": 7.49, "amountInt": 749, "currency": "USD" },
+        "historyLow": { "amount": 7.49, "amountInt": 749, "currency": "USD" },
+        "flag": "H",
+        "drm": [{ "id": 1, "name": "Steam" }],
+        "platforms": [{ "id": 1, "name": "Windows" }],
+        "timestamp": "2024-06-01T12:00:00+00:00",
+        "expiry": "2099-01-01T00:00:00+00:00",
+        "url": "https://isthereanydeal.com/game/hollow-knight/info/"
+      }
+    },
+    {
+      "id": "018d937f-game-celeste",
+      "slug": "celeste",
+      "title": "Celeste",
+      "type": "game",
+      "mature": false,
+      "assets": {
+        "boxart": "https://example.com/assets/celeste-boxart.jpg"
+      },
+      "deal": {
+        "shop": { "id": 35, "name": "GOG" },
+        "price": { "amount": 9.99, "amountInt": 999, "currency": "USD" },
+        "regular": { "amount": 19.99, "amountInt": 1999, "currency": "USD" },
+        "cut": 50,
+        "voucher": null,
+        "storeLow": { "amount": 9.99, "amountInt": 999, "currency": "USD" },
+        "historyLow": { "amount": 4.99, "amountInt": 499, "currency": "USD" },
+        "flag": null,
+        "drm": [{ "id": 2, "name": "DRM Free" }],
+        "platforms": [{ "id": 1, "name": "Windows" }],
+        "timestamp": "2024-06-01T12:00:00+00:00",
+        "expiry": "2099-06-01T00:00:00+00:00",
+        "url": "https://isthereanydeal.com/game/celeste/info/"
+      }
+    },
+    {
+      "id": "018d937f-game-hades",
+      "slug": "hades",
+      "title": "Hades",
+      "type": "game",
+      "mature": false,
+      "assets": {},
+      "deal": {
+        "shop": { "id": 6, "name": "Fanatical" },
+        "price": { "amount": 12.49, "amountInt": 1249, "currency": "USD" },
+        "regular": { "amount": 24.99, "amountInt": 2499, "currency": "USD" },
+        "cut": 50,
+        "voucher": null,
+        "storeLow": { "amount": 12.49, "amountInt": 1249, "currency": "USD" },
+        "historyLow": { "amount": 9.99, "amountInt": 999, "currency": "USD" },
+        "flag": null,
+        "drm": [{ "id": 1, "name": "Steam" }],
+        "platforms": [{ "id": 1, "name": "Windows" }],
+        "timestamp": "2024-06-01T12:00:00+00:00",
+        "expiry": null,
+        "url": "https://isthereanydeal.com/game/hades/info/"
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "018d937f-game-hollow-knight": {
+    "id": "018d937f-game-hollow-knight",
+    "slug": "hollow-knight",
+    "title": "Hollow Knight",
+    "type": "game",
+    "mature": false,
+    "earlyAccess": false,
+    "achievements": true,
+    "tradingCards": false,
+    "reviews": [
+      { "score": 97, "source": "Steam", "count": 153420 },
+      { "score": 87, "source": "Metascore", "count": 0 }
+    ]
+  },
+  "018d937f-game-celeste": {
+    "id": "018d937f-game-celeste",
+    "slug": "celeste",
+    "title": "Celeste",
+    "type": "game",
+    "mature": false,
+    "earlyAccess": false,
+    "achievements": true,
+    "tradingCards": false,
+    "reviews": [{ "score": 10, "source": "Steam", "count": 50 }]
+  }
+}

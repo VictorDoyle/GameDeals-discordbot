@@ -59,7 +59,7 @@ export interface ITADDeal {
   type: string | null;
   mature: boolean;
   assets: ITADAssets;
-  deal: ITADDealInfo;
+  deal?: ITADDealInfo;
   reviews?: ITADReview[];
 }
 
@@ -91,9 +91,4 @@ export interface ITADGameInfo {
   tags?: string[];
   releaseDate?: string;
   reviews?: ITADReview[];
-}
-
-export interface DealHistory {
-  postedDeals: Record<string, number>;
-  lastRotation: number;
 }

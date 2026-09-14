@@ -1,10 +1,10 @@
-import { api, describeLive, getCachedDeals } from "./fixtures/itadFixture";
+import { mapItadDeal } from "../src/core/deal";
+import { filterDeals } from "../src/core/filters";
+import { getCachedDeals } from "./fixtures/itadFixture";
 
-describeLive("Filtering logic", () => {
-  jest.setTimeout(30000);
-
+describe("Filtering logic", () => {
   test("filterDeals enforces savings and Steam DRM and expiry window (uses cached data)", async () => {
-    const deals = await getCachedDeals();
+    const deals = (await getCachedDeals()).map(mapItadDeal);
     const minSavings = 30;
     const maxSavings = 85;
     const filterCriteria = {
@@ -13,31 +13,25 @@ describeLive("Filtering logic", () => {
       requiredDrmNames: ["Steam"],
     };
 
-    const filtered = api.filterDeals(deals, filterCriteria);
+    const filtered = filterDeals(deals, filterCriteria);
 
-    // Expiry check (>48h) if present
     const now = Date.now();
     const EXPIRY_WINDOW_MS = 48 * 60 * 60 * 1000;
     for (const d of filtered) {
-      if (d.deal.expiry) {
-        const expiryTime = Date.parse(d.deal.expiry);
+      if (d.expiry) {
+        const expiryTime = Date.parse(d.expiry);
         expect(
           isNaN(expiryTime) || expiryTime - now > EXPIRY_WINDOW_MS,
         ).toBeTruthy();
       }
     }
 
-    if (filtered.length === 0) {
-      // If no results returned it's acceptable (depends on live data)
-      expect(filtered.length).toBe(0);
-      return;
-    }
+    expect(filtered.length).toBeGreaterThan(0);
 
     for (const d of filtered) {
-      expect(d.deal.cut).toBeGreaterThanOrEqual(minSavings);
-      expect(d.deal.cut).toBeLessThanOrEqual(maxSavings);
-      const hasSteam = d.deal.drm?.some((info: any) => info.name === "Steam");
-      expect(hasSteam).toBeTruthy();
+      expect(d.cut).toBeGreaterThanOrEqual(minSavings);
+      expect(d.cut).toBeLessThanOrEqual(maxSavings);
+      expect(d.drmNames).toContain("Steam");
     }
   });
 });

@@ -43,16 +43,6 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
           ITAD_API_KEY: ${{ secrets.ITAD_API_KEY }}
-          DEAL_LIMIT: ${{ vars.DEAL_LIMIT || '50' }}
-          MIN_SAVINGS: ${{ vars.MIN_SAVINGS || '30' }}
-          MAX_SAVINGS: ${{ vars.MAX_SAVINGS || '85' }}
-          COUNTRY: ${{ vars.COUNTRY || 'US' }}
-          SHOP_IDS: ${{ vars.SHOP_IDS || '61,35,6,3' }}
-          DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '7' }}
-          REQUIRED_DRM_NAMES: ${{ vars.REQUIRED_DRM_NAMES || 'Steam' }}
-          MIN_RATING: ${{ vars.MIN_RATING || '70' }}
-          MIN_REVIEW_COUNT: ${{ vars.MIN_REVIEW_COUNT || '100' }}
-          MIN_HOURS_UNTIL_EXPIRY: ${{ vars.MIN_HOURS_UNTIL_EXPIRY || '48' }}
         run: yarn start
 
       - name: Commit deal history
