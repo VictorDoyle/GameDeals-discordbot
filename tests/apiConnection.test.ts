@@ -1,8 +1,6 @@
-import { api, describeLive, getCachedDeals } from "./fixtures/itadFixture";
+import { api, getCachedDeals } from "./fixtures/itadFixture";
 
-describeLive("API Connection", () => {
-  jest.setTimeout(30000);
-
+describe("API Connection", () => {
   test("can fetch deals via the fixture (single API call)", async () => {
     const deals = await getCachedDeals();
     expect(Array.isArray(deals)).toBe(true);

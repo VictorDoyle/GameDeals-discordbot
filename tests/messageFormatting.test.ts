@@ -1,8 +1,6 @@
-import { api, describeLive, getCachedDeals } from "./fixtures/itadFixture";
+import { api, getCachedDeals } from "./fixtures/itadFixture";
 
-describeLive("Discord message formatting", () => {
-  jest.setTimeout(30000);
-
+describe("Discord message formatting", () => {
   test("formatDealMessage contains required elements and is under 2000 chars (uses cached data)", async () => {
     const deals = await getCachedDeals();
     expect(deals.length).toBeGreaterThan(0);

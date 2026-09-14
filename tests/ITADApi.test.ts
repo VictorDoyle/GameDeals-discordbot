@@ -1,138 +1,7 @@
+import { http, HttpResponse } from "msw";
 import { ITADApi } from "../src/services/ITADApi";
 import type { ITADDeal } from "../src/types";
-
-const originalFetch = global.fetch;
-
-afterEach(() => {
-  global.fetch = originalFetch;
-});
-
-function header(init: RequestInit | undefined, name: string): string | null {
-  const headers = init?.headers;
-  if (!headers) return null;
-  if (headers instanceof Headers) return headers.get(name);
-  if (Array.isArray(headers)) {
-    const found = headers.find(
-      ([key]) => key.toLowerCase() === name.toLowerCase(),
-    );
-    return found?.[1] ?? null;
-  }
-  const record = headers as Record<string, string>;
-  return record[name] ?? record[name.toLowerCase()] ?? null;
-}
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers: Record<string, string> = {},
-): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: {
-      get: (name: string) =>
-        headers[name] ?? headers[name.toLowerCase()] ?? null,
-    },
-    json: async () => body,
-  } as Response;
-}
-
-describe("ITADApi request", () => {
-  test("sends ITAD-API-Key header and omits key from the query string", async () => {
-    let capturedUrl = "";
-    let capturedInit: RequestInit | undefined;
-
-    global.fetch = jest.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        capturedUrl = input.toString();
-        capturedInit = init;
-        return jsonResponse(200, { list: [] });
-      },
-    );
-
-    const api = new ITADApi("secret-key");
-    await api.fetchDealsPage({ country: "US", limit: 10 });
-
-    const url = new URL(capturedUrl);
-    expect(url.searchParams.get("key")).toBeNull();
-    expect(capturedUrl).not.toContain("secret-key");
-    expect(header(capturedInit, "ITAD-API-Key")).toBe("secret-key");
-  });
-
-  test("retries 429 using Retry-After then succeeds", async () => {
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse(
-          429,
-          { status_code: 429, reason_phrase: "Too Many Requests" },
-          { "Retry-After": "0" },
-        ),
-      )
-      .mockResolvedValueOnce(jsonResponse(200, { list: [{ id: "a" }] }));
-    global.fetch = fetchMock;
-
-    const api = new ITADApi("secret-key");
-    const page = await api.fetchDealsPage({ country: "US", limit: 10 });
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(page.list).toEqual([{ id: "a" }]);
-  });
-
-  test("retries 5xx then succeeds", async () => {
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse(
-          503,
-          { status_code: 503, reason_phrase: "Unavailable" },
-          {
-            "Retry-After": "0",
-          },
-        ),
-      )
-      .mockResolvedValueOnce(jsonResponse(200, { list: [] }));
-    global.fetch = fetchMock;
-
-    const api = new ITADApi("secret-key");
-    await api.fetchDealsPage({ country: "US", limit: 10 });
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  test("does not retry 400", async () => {
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValue(
-        jsonResponse(400, { status_code: 400, reason_phrase: "Bad Request" }),
-      );
-    global.fetch = fetchMock;
-
-    const api = new ITADApi("secret-key");
-    await expect(
-      api.fetchDealsPage({ country: "US", limit: 10 }),
-    ).rejects.toThrow("ITAD API request failed: 400 Bad Request");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  test("does not retry invalid JSON", async () => {
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      json: async () => {
-        throw new Error("boom");
-      },
-    } as unknown as Response);
-    global.fetch = fetchMock;
-
-    const api = new ITADApi("secret-key");
-    await expect(
-      api.fetchDealsPage({ country: "US", limit: 10 }),
-    ).rejects.toThrow("ITAD API returned invalid JSON");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-});
+import { server } from "./msw/server";
 
 function stubDeal(id: string): ITADDeal {
   return {
@@ -160,10 +29,114 @@ function stubDeal(id: string): ITADDeal {
   };
 }
 
+describe("ITADApi request", () => {
+  test("sends ITAD-API-Key header and omits key from the query string", async () => {
+    let capturedUrl = "";
+    let capturedKey: string | null = null;
+
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", ({ request }) => {
+        capturedUrl = request.url;
+        capturedKey = request.headers.get("ITAD-API-Key");
+        return HttpResponse.json({ list: [] });
+      }),
+    );
+
+    const api = new ITADApi("secret-key");
+    await api.fetchDealsPage({ country: "US", limit: 10 });
+
+    const url = new URL(capturedUrl);
+    expect(url.searchParams.get("key")).toBeNull();
+    expect(capturedUrl).not.toContain("secret-key");
+    expect(capturedKey).toBe("secret-key");
+  });
+
+  test("retries 429 using Retry-After then succeeds", async () => {
+    let calls = 0;
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json(
+            { status_code: 429, reason_phrase: "Too Many Requests" },
+            { status: 429, headers: { "Retry-After": "0" } },
+          );
+        }
+        return HttpResponse.json({ list: [{ id: "a" }] });
+      }),
+    );
+
+    const api = new ITADApi("secret-key");
+    const page = await api.fetchDealsPage({ country: "US", limit: 10 });
+
+    expect(calls).toBe(2);
+    expect(page.list).toEqual([{ id: "a" }]);
+  });
+
+  test("retries 5xx then succeeds", async () => {
+    let calls = 0;
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json(
+            { status_code: 503, reason_phrase: "Unavailable" },
+            { status: 503, headers: { "Retry-After": "0" } },
+          );
+        }
+        return HttpResponse.json({ list: [] });
+      }),
+    );
+
+    const api = new ITADApi("secret-key");
+    await api.fetchDealsPage({ country: "US", limit: 10 });
+
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry 400", async () => {
+    let calls = 0;
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", () => {
+        calls += 1;
+        return HttpResponse.json(
+          { status_code: 400, reason_phrase: "Bad Request" },
+          { status: 400 },
+        );
+      }),
+    );
+
+    const api = new ITADApi("secret-key");
+    await expect(
+      api.fetchDealsPage({ country: "US", limit: 10 }),
+    ).rejects.toThrow("ITAD API request failed: 400 Bad Request");
+    expect(calls).toBe(1);
+  });
+
+  test("does not retry invalid JSON", async () => {
+    let calls = 0;
+    server.use(
+      http.get("https://api.isthereanydeal.com/deals/v2", () => {
+        calls += 1;
+        return new HttpResponse("not json", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    const api = new ITADApi("secret-key");
+    await expect(
+      api.fetchDealsPage({ country: "US", limit: 10 }),
+    ).rejects.toThrow("ITAD API returned invalid JSON");
+    expect(calls).toBe(1);
+  });
+});
+
 describe("enrichDeals", () => {
   test("attaches reviews and drops deals over the request budget", async () => {
     const api = new ITADApi("secret-key");
-    const getInfo = jest.spyOn(api, "getGameInfo").mockResolvedValue(
+    const getInfo = vi.spyOn(api, "getGameInfo").mockResolvedValue(
       new Map([
         [
           "good",
