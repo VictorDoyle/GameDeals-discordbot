@@ -92,8 +92,3 @@ export interface ITADGameInfo {
   releaseDate?: string;
   reviews?: ITADReview[];
 }
-
-export interface DealHistory {
-  postedDeals: Record<string, number>;
-  lastRotation: number;
-}
