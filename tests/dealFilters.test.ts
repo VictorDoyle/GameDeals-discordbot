@@ -177,5 +177,18 @@ describe("dealFilters", () => {
       ),
     ).toBe("reviews");
     expect(rejectDeal(makeDeal(), baseCriteria)).toBeNull();
+    expect(
+      rejectDeal(makeDeal({ price: 0, cut: 100 }), {
+        ...baseCriteria,
+        includeFree: true,
+        minPrice: 0,
+      }),
+    ).toBeNull();
+    expect(rejectDeal(makeDeal({ price: 0, cut: 100 }), baseCriteria)).toBe(
+      "cut",
+    );
+    expect(
+      rejectDeal(makeDeal({ price: 5 }), { ...baseCriteria, minPrice: 10 }),
+    ).toBe("price");
   });
 });

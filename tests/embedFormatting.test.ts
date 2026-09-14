@@ -22,6 +22,16 @@ describe("Embed formatting", () => {
       expect(String(desc).toLowerCase()).toContain("historical low");
     }
 
+    const withAlso = {
+      ...deal,
+      alsoAt: [{ shopName: "GOG", price: 8.99, currency: "USD" }],
+    };
+    const alsoJson = api.formatDealEmbed(withAlso).toJSON();
+    expect((alsoJson.fields || []).map((f) => f.name)).toContain("Also at");
+    expect(
+      (alsoJson.fields || []).find((f) => f.name === "Also at")?.value,
+    ).toContain("GOG");
+
     if (deal.thumbnail) {
       expect(String(json.thumbnail?.url || "")).toContain(deal.thumbnail);
     } else if (deal.image) {

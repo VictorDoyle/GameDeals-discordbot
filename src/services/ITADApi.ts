@@ -1,11 +1,33 @@
 import { EmbedBuilder } from "discord.js";
-import type { Deal } from "../core/deal";
+import {
+  dealBadges,
+  type AlsoAt,
+  type Deal,
+  type GiveawayRaw,
+} from "../core/deal";
 import {
   ITADConfig,
   ITADDeal,
   ITADDealsResponse,
   ITADGameInfo,
 } from "../types";
+
+const DISCORD_FIELD_MAX = 1024;
+const BADGE_LABEL: Record<string, string> = {
+  "historical-low": "🔥 **HISTORICAL LOW**",
+  "near-low": "📉 **NEAR LOW**",
+  "store-low": "🏪 **STORE LOW**",
+};
+
+function alsoAtText(alsoAt: AlsoAt[]): string {
+  return alsoAt
+    .map(
+      (entry) =>
+        `${entry.shopName}: ${entry.currency} ${entry.price.toFixed(2)}`,
+    )
+    .join("\n")
+    .slice(0, DISCORD_FIELD_MAX);
+}
 
 const REQUEST_TIMEOUT_MS = 15_000; // ITAD can stall
 const MAX_ATTEMPTS = 4;
@@ -148,6 +170,25 @@ export class ITADApi {
     return page.list;
   }
 
+  async fetchGiveaways(country: string): Promise<GiveawayRaw[]> {
+    const params = new URLSearchParams();
+    params.append("country", country || "US");
+    const data = await this.requestJson(
+      `${this.baseUrl}/giveaways/v1?${params.toString()}`,
+    );
+    if (Array.isArray(data)) {
+      return data as GiveawayRaw[];
+    }
+    if (
+      data &&
+      typeof data === "object" &&
+      Array.isArray((data as { list?: unknown }).list)
+    ) {
+      return (data as { list: GiveawayRaw[] }).list;
+    }
+    return [];
+  }
+
   async getShops(): Promise<Map<number, string>> {
     const url = `${this.baseUrl}/service/shops/v1`;
 
@@ -199,7 +240,7 @@ export class ITADApi {
     });
   }
 
-  formatDealMessage(deal: Deal): string {
+  formatDealMessage(deal: Deal, nearLowPercent = 5): string {
     let message = `**${deal.title}**\n\n`;
     message += `Price: ${deal.currency} ${deal.price.toFixed(2)} (was ${deal.regular.toFixed(2)})\n`;
     message += `Discount: ${deal.cut}% OFF\n`;
@@ -220,8 +261,12 @@ export class ITADApi {
 
     message += `Store: ${deal.shopName}\n`;
 
-    if (deal.historicalLow) {
-      message += `HISTORICAL LOW!\n`;
+    const badges = dealBadges(deal, nearLowPercent);
+    if (badges.length > 0) {
+      message += `${badges.join(", ")}\n`;
+    }
+    if (deal.alsoAt && deal.alsoAt.length > 0) {
+      message += `Also at: ${deal.alsoAt.map((entry) => entry.shopName).join(", ")}\n`;
     }
 
     message += `Link: ${deal.url}\n\n`;
@@ -229,7 +274,7 @@ export class ITADApi {
     return message;
   }
 
-  formatDealEmbed(deal: Deal): EmbedBuilder {
+  formatDealEmbed(deal: Deal, nearLowPercent = 5): EmbedBuilder {
     const embed = new EmbedBuilder()
       .setTitle(deal.title)
       .setURL(deal.url)
@@ -244,8 +289,18 @@ export class ITADApi {
         { name: "Store", value: deal.shopName, inline: true },
       );
 
-    if (deal.historicalLow) {
-      embed.setDescription("🔥 **HISTORICAL LOW**");
+    const badges = dealBadges(deal, nearLowPercent);
+    if (badges.length > 0) {
+      embed.setDescription(
+        badges.map((badge) => BADGE_LABEL[badge] ?? badge).join(" · "),
+      );
+    }
+
+    if (deal.alsoAt && deal.alsoAt.length > 0) {
+      embed.addFields({
+        name: "Also at",
+        value: alsoAtText(deal.alsoAt),
+      });
     }
 
     const steamReview = deal.reviews?.find((r) => r.source === "Steam");

@@ -1,4 +1,4 @@
-import type { Deal } from "./deal";
+import { isFreeDeal, type Deal } from "./deal";
 
 export interface DealFilterCriteria {
   minSavings: number;
@@ -8,6 +8,9 @@ export interface DealFilterCriteria {
   minHoursUntilExpiry?: number;
   minRating?: number;
   minReviewCount?: number;
+  includeFree?: boolean;
+  minPrice?: number | null;
+  maxPrice?: number | null;
 }
 
 export type RejectReason =
@@ -17,7 +20,8 @@ export type RejectReason =
   | "drm"
   | "expiry"
   | "rating"
-  | "reviews";
+  | "reviews"
+  | "price";
 
 export type DealReject = (deal: Deal) => RejectReason | null;
 
@@ -113,8 +117,18 @@ export function rejectDeal(
   if (!isAllowedType(deal, allowedTypes)) {
     return "type";
   }
-  if (!savingsInRange(deal, criteria.minSavings, criteria.maxSavings)) {
+  const includeFree = criteria.includeFree === true && isFreeDeal(deal);
+  if (
+    !includeFree &&
+    !savingsInRange(deal, criteria.minSavings, criteria.maxSavings)
+  ) {
     return "cut";
+  }
+  if (criteria.minPrice != null && deal.price < criteria.minPrice) {
+    return "price";
+  }
+  if (criteria.maxPrice != null && deal.price > criteria.maxPrice) {
+    return "price";
   }
   if (!hasAnyDrmName(deal, requiredDrmNames)) {
     return "drm";

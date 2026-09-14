@@ -124,6 +124,17 @@ describe("ITADApi request", () => {
     ).rejects.toThrow("ITAD API returned invalid JSON");
     expect(calls).toBe(1);
   });
+
+  test("fetchGiveaways reads the list from /giveaways/v1", async () => {
+    const api = new ITADApi("secret-key");
+    const list = await api.fetchGiveaways("US");
+    expect(list).toEqual([
+      expect.objectContaining({
+        id: "018d937f-game-free-game",
+        title: "Free Game",
+      }),
+    ]);
+  });
 });
 
 describe("enrichDeals", () => {

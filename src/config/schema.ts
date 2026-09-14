@@ -41,6 +41,10 @@ const filtersSchema = z.object({
   minReviews: intAtLeast(0).default(100),
   drm: z.union([z.string(), z.array(z.string())]).default("Steam"),
   minHoursUntilExpiry: intAtLeast(0).default(48),
+  includeFree: z.boolean().default(false),
+  minPrice: z.number().nonnegative().nullish(),
+  maxPrice: z.number().nonnegative().nullish(),
+  nearLowPercent: intRange(0, 100).default(5),
 });
 
 const botConfigSchema = z.object({
@@ -58,8 +62,11 @@ const botConfigSchema = z.object({
     minReviews: 100,
     drm: "Steam",
     minHoursUntilExpiry: 48,
+    includeFree: false,
+    nearLowPercent: 5,
   }),
   limit: intAtLeast(1).default(50),
+  source: z.enum(["deals", "giveaways"]).default("deals"),
   dedupe: z
     .object({ ttlDays: intAtLeast(1).default(7) })
     .default({ ttlDays: 7 }),
@@ -71,6 +78,7 @@ export type BotConfig = {
   country: string;
   shopIds: number[];
   limit: number;
+  source: "deals" | "giveaways";
   filters: {
     minDiscount: number;
     maxDiscount: number;
@@ -78,6 +86,10 @@ export type BotConfig = {
     minReviews: number;
     drmNames: string[];
     minHoursUntilExpiry: number;
+    includeFree: boolean;
+    minPrice: number | null;
+    maxPrice: number | null;
+    nearLowPercent: number;
   };
   dedupeTtlDays: number;
 };
@@ -122,10 +134,21 @@ export function parseBotConfig(input: unknown): BotConfig {
     );
   }
 
+  if (
+    data.filters.minPrice != null &&
+    data.filters.maxPrice != null &&
+    data.filters.minPrice > data.filters.maxPrice
+  ) {
+    throw new Error(
+      `filters.minPrice (${data.filters.minPrice}) must be <= filters.maxPrice (${data.filters.maxPrice})`,
+    );
+  }
+
   return {
     country: data.region.country,
     shopIds: data.stores.map(resolveShopId),
     limit: data.limit,
+    source: data.source,
     filters: {
       minDiscount: data.filters.minDiscount,
       maxDiscount: data.filters.maxDiscount,
@@ -133,6 +156,10 @@ export function parseBotConfig(input: unknown): BotConfig {
       minReviews: data.filters.minReviews,
       drmNames: drmNames(data.filters.drm),
       minHoursUntilExpiry: data.filters.minHoursUntilExpiry,
+      includeFree: data.filters.includeFree ?? false,
+      minPrice: data.filters.minPrice ?? null,
+      maxPrice: data.filters.maxPrice ?? null,
+      nearLowPercent: data.filters.nearLowPercent ?? 5,
     },
     dedupeTtlDays: data.dedupe.ttlDays,
   };

@@ -104,4 +104,13 @@ describe("DealCollector page stream", () => {
     ]);
     expect(collector.stats.rejects.type).toBe(1);
   });
+
+  test("same id different shop both accepted", () => {
+    const collector = new DealCollector(5, new Set(), steamReject);
+
+    expect(collector.accept(makeDeal({ id: "deal-1", shopId: 61 }))).toBe(true);
+    expect(collector.accept(makeDeal({ id: "deal-1", shopId: 35 }))).toBe(true);
+    expect(collector.results).toHaveLength(2);
+    expect(collector.stats.skippedDuplicate).toBe(0);
+  });
 });

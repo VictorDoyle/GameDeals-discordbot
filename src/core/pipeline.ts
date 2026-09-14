@@ -3,7 +3,8 @@ import { postDealBatches } from "../posting";
 import { DealCollector } from "../services/dealCollector";
 import type { ITADApi } from "../services/ITADApi";
 import type { JsonStateStore } from "../state/jsonStore";
-import { mapItadDeal, type Deal } from "./deal";
+import { consolidateDeals } from "./consolidate";
+import { mapGiveaway, mapItadDeal, type Deal } from "./deal";
 import { rejectDeal, type RejectReason } from "./filters";
 
 const PAGE_SIZE = 200;
@@ -46,6 +47,19 @@ export function formatRunReport(report: RunReport): string {
   ].join("\n");
 }
 
+function collectCriteria(config: BotConfig) {
+  const giveaways = config.source === "giveaways";
+  return {
+    minSavings: config.filters.minDiscount,
+    maxSavings: config.filters.maxDiscount,
+    requiredDrmNames: giveaways ? [] : config.filters.drmNames,
+    minHoursUntilExpiry: config.filters.minHoursUntilExpiry,
+    includeFree: config.filters.includeFree || giveaways,
+    minPrice: config.filters.minPrice,
+    maxPrice: config.filters.maxPrice,
+  };
+}
+
 export async function runPipeline(opts: {
   api: ITADApi;
   store: JsonStateStore;
@@ -53,68 +67,77 @@ export async function runPipeline(opts: {
   sendEmbeds?: (batch: Deal[]) => Promise<void>;
 }): Promise<RunReport> {
   const { api, store, config } = opts;
-  const collectCriteria = {
-    minSavings: config.filters.minDiscount,
-    maxSavings: config.filters.maxDiscount,
-    requiredDrmNames: config.filters.drmNames,
-    minHoursUntilExpiry: config.filters.minHoursUntilExpiry,
-  };
+  const criteria = collectCriteria(config);
   const ratingFiltersOn =
-    config.filters.minRating > 0 || config.filters.minReviews > 0;
+    config.source !== "giveaways" &&
+    (config.filters.minRating > 0 || config.filters.minReviews > 0);
 
   const collector = new DealCollector(config.limit, store.postedIds(), (deal) =>
-    rejectDeal(deal, collectCriteria),
+    rejectDeal(deal, criteria),
   );
 
-  let offset = 0;
-  let pageNumber = 0;
   let scanned = 0;
 
-  while (collector.needsMore) {
-    if (pageNumber > 0) {
-      await sleep(PAGE_GAP_MS);
-    }
-
-    const page = await api.fetchDealsPage({
-      country: config.country,
-      sort: "-cut",
-      shops: config.shopIds,
-      minSavings: config.filters.minDiscount,
-      maxSavings: config.filters.maxDiscount,
-      limit: PAGE_SIZE,
-      offset,
-    });
-    pageNumber++;
-    scanned += page.list.length;
-
-    if (page.list.length === 0) {
-      break;
-    }
-
-    for (const raw of page.list) {
-      collector.accept(mapItadDeal(raw));
+  if (config.source === "giveaways") {
+    const raw = await api.fetchGiveaways(config.country);
+    scanned = raw.length;
+    for (const item of raw) {
+      collector.accept(mapGiveaway(item));
       if (!collector.needsMore) {
         break;
       }
     }
+  } else {
+    let offset = 0;
+    let pageNumber = 0;
 
-    if (page.list.length < PAGE_SIZE) {
-      break;
+    while (collector.needsMore) {
+      if (pageNumber > 0) {
+        await sleep(PAGE_GAP_MS);
+      }
+
+      const page = await api.fetchDealsPage({
+        country: config.country,
+        sort: "-cut",
+        shops: config.shopIds,
+        minSavings: config.filters.minDiscount,
+        maxSavings: config.filters.maxDiscount,
+        limit: PAGE_SIZE,
+        offset,
+      });
+      pageNumber++;
+      scanned += page.list.length;
+
+      if (page.list.length === 0) {
+        break;
+      }
+
+      for (const raw of page.list) {
+        collector.accept(mapItadDeal(raw));
+        if (!collector.needsMore) {
+          break;
+        }
+      }
+
+      if (page.list.length < PAGE_SIZE) {
+        break;
+      }
+
+      offset = page.nextOffset;
     }
-
-    offset = page.nextOffset;
   }
 
   const collectStats = collector.stats;
   const rejects = { ...collectStats.rejects };
-  let deals = collector.results;
+  let deals = consolidateDeals(collector.results);
+  const uniqueAccepted = deals.length;
 
   if (ratingFiltersOn) {
     const enriched = await api.enrichDeals(deals);
     const kept: Deal[] = [];
     for (const deal of enriched) {
       const reason = rejectDeal(deal, {
-        ...collectCriteria,
+        ...criteria,
         minRating: config.filters.minRating,
         minReviewCount: config.filters.minReviews,
       });
@@ -135,10 +158,10 @@ export async function runPipeline(opts: {
 
   return {
     scanned,
-    accepted: collectStats.accepted,
+    accepted: uniqueAccepted,
     skippedPosted: collectStats.skippedPosted,
     skippedFilter:
-      collectStats.skippedFilter + (collectStats.accepted - deals.length),
+      collectStats.skippedFilter + (uniqueAccepted - deals.length),
     skippedDuplicate: collectStats.skippedDuplicate,
     rejects,
     posted: deals,

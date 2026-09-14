@@ -14,6 +14,7 @@ describe("parseBotConfig", () => {
     expect(config.country).toBe("US");
     expect(config.shopIds).toEqual([61, 35, 6, 3]);
     expect(config.limit).toBe(50);
+    expect(config.source).toBe("deals");
     expect(config.filters).toEqual({
       minDiscount: 30,
       maxDiscount: 85,
@@ -21,6 +22,10 @@ describe("parseBotConfig", () => {
       minReviews: 100,
       drmNames: ["Steam"],
       minHoursUntilExpiry: 48,
+      includeFree: false,
+      minPrice: null,
+      maxPrice: null,
+      nearLowPercent: 5,
     });
     expect(config.dedupeTtlDays).toBe(7);
   });

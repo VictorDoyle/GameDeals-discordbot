@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import { Client, GatewayIntentBits, TextChannel } from "discord.js";
 import dotenv from "dotenv";
+import fs from "node:fs";
 import { loadConfig } from "./config/load";
 import type { BotConfig } from "./config/schema";
 import type { Deal } from "./core/deal";
@@ -51,7 +51,9 @@ async function run(): Promise<void> {
     const channel = (await client.channels.fetch(CHANNEL_ID)) as TextChannel;
     sendEmbeds = async (batch) => {
       await channel.send({
-        embeds: batch.map((deal) => api.formatDealEmbed(deal)),
+        embeds: batch.map((deal) =>
+          api.formatDealEmbed(deal, config.filters.nearLowPercent),
+        ),
       });
       await new Promise((resolve) => setTimeout(resolve, 500));
     };
@@ -64,7 +66,7 @@ async function run(): Promise<void> {
   if (TEST_MODE) {
     for (const [i, deal] of report.posted.entries()) {
       console.log(
-        `\n**${i + 1}.** ${deal.title}\n\n${api.formatDealMessage(deal)}`,
+        `\n**${i + 1}.** ${deal.title}\n\n${api.formatDealMessage(deal, config.filters.nearLowPercent)}`,
       );
     }
   }

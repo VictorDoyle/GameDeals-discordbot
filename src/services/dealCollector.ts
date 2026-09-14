@@ -13,7 +13,8 @@ export class DealCollector {
   private readonly targetCount: number;
   private readonly postedIds: ReadonlySet<string>;
   private readonly reject: DealReject;
-  private readonly collectedIds = new Set<string>();
+  private readonly uniqueIds = new Set<string>();
+  private readonly seenShop = new Set<string>();
   private readonly collected: Deal[] = [];
   private readonly statsInternal: DealCollectorStats = {
     accepted: 0,
@@ -34,7 +35,10 @@ export class DealCollector {
   }
 
   accept(deal: Deal): boolean {
-    if (this.collected.length >= this.targetCount) {
+    if (
+      !this.uniqueIds.has(deal.id) &&
+      this.uniqueIds.size >= this.targetCount
+    ) {
       return false;
     }
 
@@ -51,13 +55,15 @@ export class DealCollector {
       return false;
     }
 
-    if (this.collectedIds.has(deal.id)) {
+    const shopKey = `${deal.id}:${deal.shopId}`;
+    if (this.seenShop.has(shopKey)) {
       this.statsInternal.skippedDuplicate++;
       return false;
     }
 
     this.collected.push(deal);
-    this.collectedIds.add(deal.id);
+    this.seenShop.add(shopKey);
+    this.uniqueIds.add(deal.id);
     this.statsInternal.accepted++;
     return true;
   }
@@ -67,7 +73,7 @@ export class DealCollector {
   }
 
   get needsMore(): boolean {
-    return this.collected.length < this.targetCount;
+    return this.uniqueIds.size < this.targetCount;
   }
 
   get stats(): DealCollectorStats {

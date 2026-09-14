@@ -1,4 +1,4 @@
-import { mapItadDeal } from "../src/core/deal";
+import { dealBadges, mapGiveaway, mapItadDeal } from "../src/core/deal";
 import type { ITADDeal } from "../src/types";
 
 function rawDeal(
@@ -53,5 +53,65 @@ describe("mapItadDeal", () => {
     expect(mapped.hasOffer).toBe(true);
     expect(mapped.cut).toBe(0);
     expect(mapped.price).toBe(0);
+  });
+});
+
+describe("mapGiveaway", () => {
+  test("maps a giveaway to a $0 / 100% deal", () => {
+    const mapped = mapGiveaway({
+      id: "018d937f-game-free-game",
+      title: "Free Game",
+      type: "game",
+      shop: { id: 61, name: "Steam" },
+      url: "https://example.com/free",
+      expiry: "2099-01-01T00:00:00+00:00",
+    });
+    expect(mapped.price).toBe(0);
+    expect(mapped.cut).toBe(100);
+    expect(mapped.drmNames).toEqual([]);
+  });
+});
+
+describe("dealBadges", () => {
+  test("near-low within 5% badges; 20% off history low does not", () => {
+    expect(
+      dealBadges({
+        id: "a",
+        title: "a",
+        type: "game",
+        hasOffer: true,
+        url: "",
+        shopId: 61,
+        shopName: "Steam",
+        price: 10.5,
+        regular: 20,
+        currency: "USD",
+        cut: 47,
+        drmNames: [],
+        expiry: null,
+        historicalLow: false,
+        historyLow: 10,
+      }),
+    ).toEqual(["near-low"]);
+
+    expect(
+      dealBadges({
+        id: "b",
+        title: "b",
+        type: "game",
+        hasOffer: true,
+        url: "",
+        shopId: 61,
+        shopName: "Steam",
+        price: 12,
+        regular: 20,
+        currency: "USD",
+        cut: 40,
+        drmNames: [],
+        expiry: null,
+        historicalLow: false,
+        historyLow: 10,
+      }),
+    ).toEqual([]);
   });
 });
