@@ -6,6 +6,10 @@ on:
     - cron: "0 14 */5 * *"
   workflow_dispatch:
 
+concurrency:
+  group: dealbot
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -25,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "yarn"
 
       - name: Install dependencies
@@ -39,15 +43,10 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
           ITAD_API_KEY: ${{ secrets.ITAD_API_KEY }}
-          DEAL_LIMIT: ${{ vars.DEAL_LIMIT || '50' }}
-          MIN_SAVINGS: ${{ vars.MIN_SAVINGS || '30' }}
-          MAX_SAVINGS: ${{ vars.MAX_SAVINGS || '85' }}
-          COUNTRY: ${{ vars.COUNTRY || 'US' }}
-          SHOP_IDS: ${{ vars.SHOP_IDS || '61,35,37,24,29,36,49' }}
-          DEDUPLICATION_DAYS: ${{ vars.DEDUPLICATION_DAYS || '5' }}
         run: yarn start
 
       - name: Commit deal history
+        if: always()
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"

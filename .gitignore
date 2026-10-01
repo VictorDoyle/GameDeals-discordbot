@@ -6,3 +6,4 @@ dist
 rate-limit-state.json
 *.log
 TODO.md
+bot.config.ts

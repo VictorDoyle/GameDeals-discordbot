@@ -1,155 +1,94 @@
-# ITAD Game Deals Discord Bot
+# Game Deals Discord Bot
 
-A Discord bot that posts the best game deals from IsThereAnyDeal.com based on your criteria.
+Posts filtered [IsThereAnyDeal](https://isthereanydeal.com/) deals to one Discord channel on a GitHub Actions cron. No server, no database, no SaaS bill.
 
-## Features
+[![Test](https://github.com/VictorDoyle/GameDeals-discordbot/actions/workflows/test.yml/badge.svg)](https://github.com/VictorDoyle/GameDeals-discordbot/actions/workflows/test.yml)
+[![Node](https://img.shields.io/badge/node-22.20-339933?logo=node.js&logoColor=white)](https://github.com/VictorDoyle/GameDeals-discordbot/blob/development/.nvmrc)
+[![Yarn](https://img.shields.io/badge/yarn-4-2C8EBB?logo=yarn&logoColor=white)](https://yarnpkg.com)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-- ✅ Steam-only deals with DRM filtering
-- ✅ Minimum review count filtering (100+)
-- ✅ Minimum rating filtering (70%+)
-- ✅ Minimum discount percentage (30%+)
-- ✅ Multiple store support
-- ✅ Historical low detection
-- ✅ Deduplication (prevents posting same deals)
-- ✅ Free API with generous rate limits
+<p align="center">
+  <img src="media/gamedeals-bot-discord.png" alt="Deal embeds posted by the bot" width="420" />
+</p>
 
-## Setup
+## What you get
 
-### 1. Get ITAD API Key
+- Filters: discount, Steam rating and review count, DRM, expiry window; optional min/max price, free games, or `source: "giveaways"`
+- One embed per game (cheapest shop wins; others listed as Also at)
+- Historical-low, near-low, and store-low badges
+- Dedup via `deal-history.json` (TTL)
+- GitHub Actions every 5 days (`0 14 */5 * *`) plus manual dispatch
 
-1. Go to https://isthereanydeal.com/apps/
-2. Register your application
-3. Copy your API key
+## Quick start
 
-### 2. Environment Configuration
+1. Fork this repo and enable Actions on the fork.
+2. Create a [Discord bot](https://discord.com/developers/applications), invite it to your server, copy the token and a channel id. Register an [ITAD API key](https://isthereanydeal.com/apps/).
+3. Repo **Settings → Secrets and variables → Actions**. Add `ITAD_API_KEY`, `DISCORD_TOKEN`, `DISCORD_CHANNEL_ID`.
+4. **Actions → Post Game Deals → Run workflow**.
+5. Optional: copy [`config/example.config.ts`](config/example.config.ts) to `bot.config.ts` (gitignored), or set Actions env such as `DEALBOT__FILTERS__MIN_DISCOUNT=40`.
 
-Copy `.env.example` to `.env` and configure:
+## Run locally
 
-```bash
-ITAD_API_KEY=your_key_here
-DISCORD_TOKEN=your_discord_bot_token
-DISCORD_CHANNEL_ID=your_channel_id
-
-DEAL_LIMIT=50
-MIN_SAVINGS=30
-MAX_SAVINGS=85
-MIN_REVIEW_COUNT=100
-MIN_RATING=70
-COUNTRY=US
-
-SHOP_IDS=61,35,6,3
-```
-
-### 3. Store IDs Reference
-
-According to [ITAD API documentation](https://docs.isthereanydeal.com/), common store IDs:
-
-- **61** - Steam
-- **35** - GOG
-- **6** - Fanatical
-- **3** - GreenManGaming
-- **11** - Humble Store
-- **13** - GamersGate
-- **25** - Epic Games Store
-
-You can fetch all available stores using the `/service/shops/v1` endpoint.
-
-### 4. Install and Run
+Needs Node `22.20.0` ([`.nvmrc`](.nvmrc)).
 
 ```bash
+corepack enable
 yarn install
+cp .env.example .env   # then fill the three secrets
 yarn build
-yarn start
+TEST_MODE=true yarn start   # console only; does not write deal-history.json
 ```
 
-## Configuration Options
+`yarn start` without `TEST_MODE` posts to Discord and updates history.
 
-### MIN_SAVINGS
+## Configuration
 
-Minimum discount percentage (default: 30)
+Defaults live in [`config/example.config.ts`](config/example.config.ts). Missing `bot.config.ts` uses that file. Shop names (`"steam"`, `"gog"`) resolve in [`src/config/shops.ts`](src/config/shops.ts); numeric [ITAD shop ids](https://docs.isthereanydeal.com/) also work.
 
-### MIN_REVIEW_COUNT
+| Field | Default | Notes |
+|---|---|---|
+| `region.country` | `US` | ISO 3166-1 alpha-2 |
+| `stores` | `steam`, `gog`, `fanatical`, `3` | Names or ITAD shop ids |
+| `source` | `deals` | `giveaways` hits `/giveaways/v1` instead |
+| `filters.minDiscount` / `maxDiscount` | 30 / 85 | Percent off |
+| `filters.minRating` | 70 | Steam score after `/games/info/v2`. `0` disables |
+| `filters.minReviews` | 100 | Steam review count. `0` disables |
+| `filters.drm` | `"Steam"` | `"any"` or `[]` disables |
+| `filters.minHoursUntilExpiry` | 48 | `0` still drops already-expired deals |
+| `filters.includeFree` | `false` | Allow `$0` / 100% cut through the discount cap |
+| `filters.minPrice` / `maxPrice` | unset | Sale price bounds |
+| `filters.nearLowPercent` | 5 | Badge when price is within this % of history low |
+| `limit` | 50 | Target posts per run |
+| `dedupe.ttlDays` | 7 | Remember posted game ids |
 
-Minimum number of Steam reviews (default: 100)
+Invalid config aborts at startup with a path in the message (`filters.minRating must be 0–100, got "seventy"`).
 
-### MIN_RATING
+## How a run works
 
-Minimum Steam rating percentage (default: 70)
-
-### DEAL_LIMIT
-
-Target number of deals to post per run (default: 50). The bot paginates through ITAD results until this count of new, filter-matching deals is collected, or the API is exhausted. Posts fewer on shortfall; never posts duplicates.
-
-### REQUIRED_DRM_NAMES
-
-Comma-separated DRM names a deal must have (default: `Steam`). Leave empty to disable DRM filtering.
-
-### SHOP_IDS
-
-Comma-separated store IDs to check (default: 61,35,6,3)
-
-### COUNTRY
-
-ISO 3166-1 alpha-2 country code for pricing (default: US)
-
-### DEDUPLICATION_DAYS
-
-Days to remember posted deals (default: 7)
-
-## API Rate Limits
-
-ITAD API has reasonable rate limits for daily batch processing. The bot fetches pages of up to 200 deals until the target count is met, with a short delay between pages.
-
-## Why ITAD over CheapShark?
-
-- Built-in Steam rating and review count data
-- Configurable DRM filtering via `REQUIRED_DRM_NAMES`
-- More reliable historical low tracking
-- Better store coverage
-- More active development
-- Mature game filtering
-
-## Example Output
-
-```
-**Hollow Knight**
-
-Price: USD 7.49 (was 14.99)
-Discount: 50% OFF
-Steam Rating: 97% (153,420 reviews)
-Metacritic: 87/100
-Store: Steam
-🔥 HISTORICAL LOW!
-Link: https://itad.link/...
+```mermaid
+flowchart LR
+  itad[ITAD]
+  filter[filter]
+  merge[one_embed_per_game]
+  discord[Discord]
+  state[deal_history.json]
+  itad --> filter --> merge --> discord --> state
 ```
 
-## Troubleshooting
+## Security
 
-### No deals found
+Three secrets: `ITAD_API_KEY`, `DISCORD_TOKEN`, `DISCORD_CHANNEL_ID`. Never commit `.env`. `bot.config.ts` is gitignored. The post workflow uses `contents: write` so it can commit `deal-history.json`.
 
-- Lower MIN_RATING or MIN_REVIEW_COUNT
-- Increase DEAL_LIMIT
-- Check different SHOP_IDS
-- Verify MIN_SAVINGS isn't too high
+## Develop
 
-### API errors
-
-- Verify ITAD_API_KEY is correct
-- Check your app is registered at isthereanydeal.com/apps/my
-- Ensure you're not hitting rate limits
-
-## GitHub Actions
-
-Schedule daily deal posts:
-
-```yaml
-on:
-  schedule:
-    - cron: "0 12 * * *"
+```bash
+yarn test    # offline; MSW fixtures
+yarn build
 ```
 
-Set secrets in repository settings:
+Open pull requests against `development`, then merge to `main`.
+The post workflow runs on `main` and commits `deal-history.json` there.
 
-- ITAD_API_KEY
-- DISCORD_TOKEN
-- DISCORD_CHANNEL_ID
+## License
+
+[MIT](LICENSE). Free to use, modify, and redistribute. Keep the copyright notice so [Victor Doyle](https://github.com/VictorDoyle) stays credited as the originator.
